@@ -1,0 +1,1158 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — {{ today }}{% endblock %}
+{% block ts %}{{ now }} &mdash; &#8635; 30s{% endblock %}
+{% set refresh = 30 %}
+
+{% block content %}
+
+{% if ctx.session_halted %}
+<div class="halted-banner">⊘ &nbsp;Session halted — daily loss limit reached</div>
+{% endif %}
+
+<h1>
+  Morning Dashboard
+  <span class="dim" style="font-size:11px;font-weight:400">{{ today }}</span>
+  {% if has_scores %}
+    <span class="tag tag-trade">AI Scores</span>
+  {% else %}
+    <span class="tag tag-skip">Layer 1 only</span>
+  {% endif %}
+  <div class="h1-right">
+    <div class="db-context">
+      <div class="db-ctx-item">
+        <span class="db-ctx-label">VIX</span>
+        <span class="db-ctx-val {% if ctx.vix >= 30 %}red{% elif ctx.vix >= 20 %}warn{% else %}green{% endif %}">
+          {{ "%.1f"|format(ctx.vix) if ctx.vix else "—" }}
+        </span>
+      </div>
+      <span class="db-ctx-sep">·</span>
+      <div class="db-ctx-item">
+        <span class="db-ctx-label">Trades</span>
+        <span class="db-ctx-val">{{ ctx.trades_count }}/3</span>
+      </div>
+      <span class="db-ctx-sep">·</span>
+      <div class="db-ctx-item">
+        <span class="db-ctx-label">Session P&amp;L</span>
+        <span class="db-ctx-val {% if ctx.total_pnl > 0 %}green{% elif ctx.total_pnl < 0 %}red{% endif %}">
+          ${{ "%.2f"|format(ctx.total_pnl) }}
+        </span>
+      </div>
+      <span class="db-ctx-sep">·</span>
+      <div class="db-ctx-item">
+        <span class="db-ctx-label">Risk/Trade</span>
+        <span class="db-ctx-val">${{ ctx.risk_budget|int }}</span>
+      </div>
+      <span class="db-ctx-sep">·</span>
+      <div class="db-ctx-item">
+        <span class="db-ctx-label">Risk Left</span>
+        <span class="db-ctx-val {% if risk_remaining == 0 %}red{% else %}green{% endif %}">${{ risk_remaining|int }}</span>
+      </div>
+    </div>
+  </div>
+</h1>
+
+<!-- ── Candidates table ───────────────────────────────────────────────────── -->
+<div class="card">
+  <h2 style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    Today's Candidates
+    <span class="h2-count">
+      {{ layer1|selectattr("passed_filters")|list|length }} passed
+      {% if layer1|selectattr("passed_filters")|rejectattr("passed_filters")|list|length == 0 and layer1 %}
+      · {{ layer1|length }} total
+      {% endif %}
+    </span>
+    <form id="add-stock-form" class="add-stock-form" onsubmit="return addStock(event)">
+      <input type="text" id="add-stock-input" class="add-stock-input" placeholder="Add ticker…" maxlength="10" autocomplete="off" spellcheck="false">
+      <button type="submit" class="add-stock-btn" id="add-stock-btn">+ Add</button>
+    </form>
+  </h2>
+  {% if layer1 %}
+  <div class="filter-bar" id="filter-bar">
+    <div class="filter-group">
+      <span class="filter-label">Decision</span>
+      <button class="filter-pill active" data-filter="decision" data-val="ALL">All</button>
+      <button class="filter-pill fp-trade" data-filter="decision" data-val="TRADE">Trade</button>
+      <button class="filter-pill fp-watch" data-filter="decision" data-val="WATCH">Watch</button>
+      <button class="filter-pill fp-skip"  data-filter="decision" data-val="SKIP">Skip</button>
+    </div>
+    <div class="filter-group">
+      <span class="filter-label">Type</span>
+      <button class="filter-pill active" data-filter="type" data-val="ALL">All</button>
+      <button class="filter-pill" data-filter="type" data-val="stock">Stock</button>
+      <button class="filter-pill" data-filter="type" data-val="etf">ETF</button>
+    </div>
+    <div class="filter-group">
+      <input type="text" class="filter-search" id="filter-search" placeholder="Search symbol…" autocomplete="off" spellcheck="false">
+    </div>
+    <span class="filter-count" id="filter-count"></span>
+  </div>
+  <div class="card-table">
+  <table id="candidates-table">
+    <thead>
+      <tr>
+        <th class="sortable" data-sort="symbol">Symbol</th>
+        <th class="sortable" data-sort="type">Type</th>
+        <th class="num sortable" data-sort="gap">Gap %</th>
+        <th class="num sortable" data-sort="pmvol">PM Vol</th>
+        <th class="num sortable" data-sort="atr">ATR %</th>
+        <th>ORB</th>
+        {% if has_scores %}
+        <th class="num sortable" data-sort="score">Score</th>
+        <th class="sortable" data-sort="decision">Decision</th>
+        <th>Catalyst</th>
+        <th class="num">Entry</th>
+        <th class="num">Stop</th>
+        <th class="num">Stop %</th>
+        <th class="num">T1</th>
+        <th class="num">T2</th>
+        <th class="num">Shares</th>
+        <th class="num">Risk $</th>
+        {% endif %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in layer1 %}
+      {% if r.passed_filters %}
+      <tr class="sym-row" data-symbol="{{ r.symbol }}" data-score-id="{{ r.ai_score_id or '' }}" data-decision="{{ r.decision or '' }}" data-type="{{ r.ticker_type }}" data-gap="{{ r.gap_pct or 0 }}" data-atr="{{ r.atr_pct or 0 }}" data-score="{{ r.score_final or 0 }}" data-pmvol="{{ r.pm_volume or 0 }}" style="cursor:pointer" title="Click for detail">
+        <td>
+          <span class="sym sym-link">{{ r.symbol }}</span>
+          {% if r.l3_status %}
+            <span class="tag tag-{% if r.l3_status in ('OPEN','PARTIAL') %}open{% elif r.l3_status == 'CLOSED' %}closed{% elif r.l3_status == 'STOP' %}stop{% elif r.l3_status == 'PENDING' %}pending{% else %}skip{% endif %}"
+                  style="margin-left:6px">{{ r.l3_status }}</span>
+          {% endif %}
+        </td>
+        <td class="dim" style="font-size:11px">{{ r.ticker_type }}</td>
+        <td class="num {% if r.gap_pct >= 8 %}green{% elif r.gap_pct >= 4 %}warn{% endif %}">
+          +{{ "%.1f"|format(r.gap_pct) if r.gap_pct else "—" }}%
+        </td>
+        <td class="num">
+          {% if r.pm_volume %}
+            {% set v = r.pm_volume %}
+            <span style="font-family:var(--font-mono)">
+              {% if v >= 1000000 %}{{ "%.1f"|format(v/1000000) }}M
+              {% elif v >= 1000 %}{{ "%.0f"|format(v/1000) }}K
+              {% else %}{{ v }}{% endif %}
+            </span>
+          {% else %}<span class="dim">—</span>{% endif %}
+        </td>
+        <td class="num" style="font-family:var(--font-mono)">{{ "%.1f"|format(r.atr_pct) if r.atr_pct else "—" }}%</td>
+        <td>
+          {% if r.orb_high %}
+            <span class="green" style="font-family:var(--font-mono);font-size:11px">{{ "%.2f"|format(r.orb_high) }}</span>
+            <span class="dim" style="margin:0 2px">/</span>
+            <span class="red"  style="font-family:var(--font-mono);font-size:11px">{{ "%.2f"|format(r.orb_low) }}</span>
+          {% else %}
+            <span class="dim">{{ r.orb_window }}m</span>
+          {% endif %}
+        </td>
+        {% if has_scores %}
+        <td class="num">
+          {% if r.score_final %}
+            <div class="db-score-cell">
+              <div class="db-score-bar-track">
+                <div class="db-score-bar-fill {% if r.score_final >= 75 %}sfill-green{% elif r.score_final >= 65 %}sfill-amber{% else %}sfill-muted{% endif %}"
+                     style="width:{{ [r.score_final, 100]|min }}%"></div>
+              </div>
+              <strong class="{% if r.score_final >= 75 %}green{% elif r.score_final >= 65 %}warn{% endif %}"
+                      style="font-family:var(--font-mono);font-size:12px">
+                {{ "%.0f"|format(r.score_final) }}
+              </strong>
+            </div>
+          {% else %}<span class="dim">—</span>{% endif %}
+        </td>
+        <td>
+          <div class="decision-cell">
+            {% if r.decision %}
+              <span class="tag tag-{{ r.decision|lower }}" id="dt-{{ r.symbol }}">{{ r.decision }}</span>
+            {% else %}<span class="dim">—</span>{% endif %}
+            {% if r.ai_score_id %}
+              <div class="wl-override-btns" id="dt-btns-{{ r.symbol }}">
+                {% if r.decision == 'TRADE' %}
+                  <button class="wl-btn wl-btn-watch" onclick="override('{{ r.symbol }}', {{ r.ai_score_id }}, 'WATCH', event)">WATCH</button>
+                  <button class="wl-btn wl-btn-skip"  onclick="override('{{ r.symbol }}', {{ r.ai_score_id }}, 'SKIP',  event)">SKIP</button>
+                {% elif r.decision == 'WATCH' %}
+                  <button class="wl-btn wl-btn-trade" onclick="override('{{ r.symbol }}', {{ r.ai_score_id }}, 'TRADE', event)">TRADE</button>
+                  <button class="wl-btn wl-btn-skip"  onclick="override('{{ r.symbol }}', {{ r.ai_score_id }}, 'SKIP',  event)">SKIP</button>
+                {% else %}
+                  <button class="wl-btn wl-btn-watch" onclick="override('{{ r.symbol }}', {{ r.ai_score_id }}, 'WATCH', event)">WATCH</button>
+                  <button class="wl-btn wl-btn-trade" onclick="override('{{ r.symbol }}', {{ r.ai_score_id }}, 'TRADE', event)">TRADE</button>
+                {% endif %}
+              </div>
+            {% endif %}
+          </div>
+        </td>
+        <td style="font-size:11px;color:var(--subtext)">
+          {{ r.catalyst_type or "—" }}
+          {% if r.catalyst_score %}<span class="dim" style="font-size:10px">({{ r.catalyst_score }})</span>{% endif %}
+        </td>
+        <td class="num green" style="font-family:var(--font-mono)" id="td-entry-{{ r.symbol }}">${{ "%.2f"|format(r.entry_price) if r.entry_price else "—" }}</td>
+        <td class="num red"   style="font-family:var(--font-mono)" id="td-stop-{{ r.symbol }}">${{ "%.2f"|format(r.stop_price)  if r.stop_price  else "—" }}</td>
+        <td class="num" id="td-stoppct-{{ r.symbol }}">
+          {% if r.entry_price and r.stop_price %}
+            {% set sp = (r.entry_price - r.stop_price) / r.entry_price * 100 %}
+            <span class="{% if sp > 5 %}red{% endif %}" style="font-family:var(--font-mono)">{{ "%.1f"|format(sp) }}%</span>
+          {% else %}<span class="dim">—</span>{% endif %}
+        </td>
+        <td class="num" style="font-family:var(--font-mono)" id="td-t1-{{ r.symbol }}">${{ "%.2f"|format(r.t1_price) if r.t1_price else "—" }}</td>
+        <td class="num" style="font-family:var(--font-mono)" id="td-t2-{{ r.symbol }}">${{ "%.2f"|format(r.t2_price) if r.t2_price else "—" }}</td>
+        <td class="num" style="font-family:var(--font-mono)" id="td-shares-{{ r.symbol }}">{{ r.shares if r.shares else "—" }}</td>
+        <td class="num" style="font-family:var(--font-mono)" id="td-risk-{{ r.symbol }}">${{ "%.2f"|format(r.risk_amount) if r.risk_amount else "—" }}</td>
+        {% endif %}
+      </tr>
+      {% endif %}
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <div class="empty">
+    <span class="empty-icon">◈</span>
+    <span class="empty-label">No candidates yet — Layer 1 scans at 9:30 AM ET</span>
+  </div>
+  {% endif %}
+</div>
+
+{% if has_scores %}
+<!-- ── Watch / Skip — compact badge list ──────────────────────────────────── -->
+<div class="card">
+  <h2>
+    Watch &amp; Skip
+    <span class="h2-count">{{ layer1|selectattr("decision")|rejectattr("decision","eq","TRADE")|list|length }} symbols</span>
+  </h2>
+  {% set non_trades = layer1|selectattr("decision")|rejectattr("decision","eq","TRADE")|list %}
+  <div class="db-watchlist">
+    {% if non_trades %}
+      {% for r in layer1 %}
+      {% if r.decision and r.decision != 'TRADE' %}
+      <div class="db-watch-item" id="wl-{{ r.symbol }}">
+        <span class="sym sym-link" style="font-size:12px;cursor:pointer" onclick="openDrawer('{{ r.symbol }}')">{{ r.symbol }}</span>
+        <span class="tag tag-{{ r.decision|lower }} wl-decision-tag" id="wl-tag-{{ r.symbol }}">{{ r.decision }}</span>
+        {% if r.score_final %}<span class="db-watch-score dim">{{ "%.0f"|format(r.score_final) }}</span>{% endif %}
+        <span class="db-watch-reason dim">{{ r.skip_reason or "" }}</span>
+        {% if r.ai_score_id %}
+        <div class="wl-override-btns" id="wl-btns-{{ r.symbol }}">
+          {% if r.decision == 'WATCH' %}
+            <button class="wl-btn wl-btn-trade" onclick="override('{{ r.symbol }}', {{ r.ai_score_id }}, 'TRADE', event)">TRADE</button>
+            <button class="wl-btn wl-btn-skip"  onclick="override('{{ r.symbol }}', {{ r.ai_score_id }}, 'SKIP',  event)">SKIP</button>
+          {% else %}
+            <button class="wl-btn wl-btn-watch" onclick="override('{{ r.symbol }}', {{ r.ai_score_id }}, 'WATCH', event)">WATCH</button>
+            <button class="wl-btn wl-btn-trade" onclick="override('{{ r.symbol }}', {{ r.ai_score_id }}, 'TRADE', event)">TRADE</button>
+          {% endif %}
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+      {% endfor %}
+    {% else %}
+      <div class="empty">
+        <span class="empty-icon">✓</span>
+        <span class="empty-label">All scored candidates marked as TRADE</span>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+<!-- ── Stock detail drawer ────────────────────────────────────────────────── -->
+<div id="sd-overlay" onclick="sdClose()" style="display:none"></div>
+<div id="sd-drawer">
+  <div id="sd-header">
+    <div style="display:flex;align-items:center;gap:10px">
+      <span id="sd-symbol"></span>
+      <span id="sd-decision-tag"></span>
+    </div>
+    <button onclick="sdClose()" id="sd-close">&#x2715;</button>
+  </div>
+  <div id="sd-body"><div id="sd-loading">Loading…</div></div>
+</div>
+
+<style>
+  /* ── Top bar ──────────────────────────────────────────────────────── */
+  .db-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .db-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-strong);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .db-context {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 6px 14px;
+  }
+
+  .db-ctx-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .db-ctx-label {
+    font-size: 9.5px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .db-ctx-val {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-strong);
+  }
+
+  .db-ctx-sep { color: var(--border-med); font-size: 14px; }
+
+  /* ── Score cell ───────────────────────────────────────────────────── */
+  .db-score-cell {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    justify-content: flex-end;
+  }
+
+  .db-score-bar-track {
+    width: 36px;
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .db-score-bar-fill { height: 100%; border-radius: 2px; }
+  .sfill-green { background: var(--green); }
+  .sfill-amber { background: var(--amber); }
+  .sfill-muted { background: var(--muted); }
+
+  /* ── Watch/Skip compact list ──────────────────────────────────────── */
+  .db-watchlist {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 12px 14px;
+  }
+
+  .db-watch-item {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 10px;
+    background: var(--bg-thead);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    transition: border-color 0.12s;
+  }
+
+  .db-watch-item:hover { border-color: var(--border-med); }
+
+  .decision-cell {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+  }
+
+  .wl-override-btns {
+    display: flex;
+    gap: 4px;
+    margin-left: auto;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+
+  .db-watch-item:hover .wl-override-btns,
+  tr:hover .wl-override-btns { opacity: 1; }
+
+  .wl-btn {
+    padding: 2px 8px;
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: background 0.1s, color 0.1s;
+    line-height: 16px;
+  }
+
+  .wl-btn-watch {
+    background: var(--amber-bg);
+    color: var(--amber);
+    border-color: rgba(255,152,0,0.3);
+  }
+  .wl-btn-watch:hover { background: var(--amber); color: #fff; }
+
+  .wl-btn-trade {
+    background: var(--green-bg);
+    color: var(--green);
+    border-color: rgba(38,166,154,0.3);
+  }
+  .wl-btn-trade:hover { background: var(--green); color: #fff; }
+
+  .wl-btn-skip {
+    background: var(--muted-bg);
+    color: var(--subtext);
+    border-color: transparent;
+  }
+  .wl-btn-skip:hover { background: var(--muted); color: #fff; }
+
+  .wl-plan-pill {
+    font-size: 10px;
+    color: var(--subtext);
+    font-family: var(--font-mono);
+    white-space: nowrap;
+  }
+
+  .wl-plan-pill strong {
+    font-weight: 600;
+    color: var(--text-strong);
+  }
+
+  .db-watch-score {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+  }
+
+  .db-watch-reason {
+    font-size: 10px;
+    max-width: 180px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* ── Symbol link ──────────────────────────────────────────────────── */
+  .sym-link {
+    cursor: pointer;
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    text-underline-offset: 3px;
+    text-decoration-color: var(--blue);
+  }
+
+  .sym-row:hover td { background: var(--bg-hover) !important; }
+
+  /* ── Stock detail drawer ──────────────────────────────────────────── */
+  #sd-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 200;
+    animation: fadeIn 0.18s ease;
+  }
+
+  @keyframes fadeIn { from{opacity:0} to{opacity:1} }
+
+  #sd-drawer {
+    position: fixed; top: 0; right: 0; bottom: 0;
+    width: min(520px, 96vw);
+    background: var(--bg-card);
+    border-left: 1px solid var(--border-med);
+    z-index: 201;
+    display: flex; flex-direction: column;
+    box-shadow: -6px 0 24px rgba(0,0,0,0.4);
+    transform: translateX(100%);
+    transition: transform 0.22s cubic-bezier(0.22,1,0.36,1);
+  }
+
+  #sd-drawer.open { transform: translateX(0); }
+
+  #sd-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    background: var(--bg-thead);
+  }
+
+  #sd-symbol {
+    font-family: var(--font-mono);
+    font-size: 20px; font-weight: 700;
+    color: var(--text-strong);
+    letter-spacing: -0.5px;
+  }
+
+  #sd-close {
+    background: none; border: none; cursor: pointer;
+    color: var(--subtext); font-size: 16px; padding: 4px 8px;
+    border-radius: var(--radius-sm);
+  }
+  #sd-close:hover { color: var(--text); background: var(--muted-bg); }
+
+  #sd-body { flex: 1; overflow-y: auto; padding: 0 18px 24px; }
+  #sd-loading { color: var(--muted); font-size: 12px; padding: 28px 0; text-align: center; }
+
+  .sd-section { margin-top: 18px; }
+  .sd-section-title {
+    font-size: 9.5px; font-weight: 700; letter-spacing: 0.7px;
+    text-transform: uppercase; color: var(--muted);
+    margin-bottom: 10px; padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .sd-price-row { display: flex; align-items: baseline; gap: 10px; margin-bottom: 12px; }
+  .sd-price-big {
+    font-family: var(--font-mono); font-size: 30px; font-weight: 700;
+    color: var(--text-strong); letter-spacing: -1px; line-height: 1;
+  }
+  .sd-change { display: flex; flex-direction: column; justify-content: center; font-family: var(--font-mono); font-size: 12px; font-weight: 600; }
+
+  .sd-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; margin-bottom: 6px; }
+  .sd-field { display: flex; flex-direction: column; gap: 2px; }
+  .sd-label { font-size: 9px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  .sd-value { font-family: var(--font-mono); font-size: 12.5px; color: var(--text-strong); font-weight: 500; }
+
+  .sd-headline {
+    font-size: 12px; line-height: 1.5; color: var(--subtext);
+    background: var(--muted-bg); border-radius: var(--radius-sm);
+    padding: 10px 12px; margin-bottom: 6px;
+  }
+  .sd-reasoning {
+    font-size: 11px; line-height: 1.6; color: var(--subtext);
+    padding: 8px 12px; border-left: 2px solid var(--blue); margin-top: 8px;
+  }
+
+  .sd-score-bars { display: flex; flex-direction: column; gap: 6px; }
+  .sd-score-row { display: flex; align-items: center; gap: 8px; font-size: 11px; }
+  .sd-score-name { width: 72px; flex-shrink: 0; color: var(--subtext); font-size: 10px; }
+  .sd-bar-track { flex: 1; height: 4px; background: var(--muted-bg); border-radius: 99px; overflow: hidden; }
+  .sd-bar-fill { height: 100%; background: var(--blue); border-radius: 99px; }
+  .sd-score-val { width: 26px; text-align: right; font-family: var(--font-mono); font-size: 10.5px; color: var(--subtext); }
+
+  .sd-plan-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; }
+  .sd-plan-field {
+    background: var(--muted-bg); border-radius: var(--radius-sm);
+    padding: 8px 10px; display: flex; flex-direction: column; gap: 3px;
+  }
+
+  .sd-hist-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .sd-hist-table th { text-align: left; padding: 5px 0; font-size: 9px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border); }
+  .sd-hist-table th.r { text-align: right; }
+  .sd-hist-table td { padding: 5px 0; border-bottom: 1px solid var(--border); }
+  .sd-hist-table td.r { text-align: right; font-family: var(--font-mono); }
+  .sd-hist-table tr:last-child td { border-bottom: none; }
+
+  .sd-override-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+
+  .sd-override-row .wl-btn {
+    opacity: 1;
+    padding: 4px 14px;
+    font-size: 10.5px;
+  }
+
+  .sd-company-bar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 10px 18px;
+    background: var(--bg-thead);
+    border-bottom: 1px solid var(--border);
+    margin: 0 -18px;
+  }
+  .sd-company-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-strong);
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .sd-company-chip {
+    font-size: 10px;
+    padding: 2px 8px;
+    background: var(--muted-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    white-space: nowrap;
+    color: var(--subtext);
+  }
+
+  /* ── Add stock form ─────────────────────────────────────────── */
+  .add-stock-form {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+  }
+  .add-stock-input {
+    width: 90px;
+    padding: 4px 8px;
+    font-size: 11px;
+    font-family: var(--font-mono);
+    font-weight: 600;
+    text-transform: uppercase;
+    background: var(--bg-thead);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-strong);
+    outline: none;
+  }
+  .add-stock-input:focus { border-color: var(--blue); }
+  .add-stock-input::placeholder { color: var(--muted); text-transform: none; font-weight: 400; }
+  .add-stock-btn {
+    padding: 4px 10px;
+    font-size: 10px;
+    font-weight: 700;
+    background: var(--blue);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    white-space: nowrap;
+    letter-spacing: 0.3px;
+  }
+  .add-stock-btn:hover { opacity: 0.85; }
+  .add-stock-btn:disabled { opacity: 0.5; cursor: default; }
+
+  /* ── Filter bar ──────────────────────────────────────────────── */
+  .filter-bar {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  .filter-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .filter-label {
+    font-size: 9px;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-right: 2px;
+  }
+  .filter-pill {
+    padding: 3px 9px;
+    font-size: 10px;
+    font-weight: 600;
+    border: 1px solid var(--border);
+    border-radius: 99px;
+    background: transparent;
+    color: var(--subtext);
+    cursor: pointer;
+    transition: all 0.12s;
+  }
+  .filter-pill:hover { border-color: var(--border-med); color: var(--text); }
+  .filter-pill.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+  .fp-trade.active { background: var(--green); border-color: var(--green); }
+  .fp-watch.active { background: var(--amber); border-color: var(--amber); }
+  .fp-skip.active  { background: var(--muted); border-color: var(--muted); }
+  .filter-search {
+    width: 100px;
+    padding: 3px 8px;
+    font-size: 10px;
+    font-family: var(--font-mono);
+    font-weight: 600;
+    text-transform: uppercase;
+    background: var(--bg-thead);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--text-strong);
+    outline: none;
+  }
+  .filter-search:focus { border-color: var(--blue); }
+  .filter-search::placeholder { text-transform: none; font-weight: 400; color: var(--muted); }
+  .filter-count {
+    font-size: 10px;
+    color: var(--muted);
+    font-family: var(--font-mono);
+    margin-left: auto;
+  }
+
+  /* ── Sortable headers ────────────────────────────────────────── */
+  .sortable {
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+  }
+  .sortable:hover { color: var(--blue); }
+  .sortable::after {
+    content: '';
+    display: inline-block;
+    width: 0; height: 0;
+    margin-left: 4px;
+    vertical-align: middle;
+  }
+  .sortable.sort-asc::after {
+    border-left: 3.5px solid transparent;
+    border-right: 3.5px solid transparent;
+    border-bottom: 4px solid var(--blue);
+  }
+  .sortable.sort-desc::after {
+    border-left: 3.5px solid transparent;
+    border-right: 3.5px solid transparent;
+    border-top: 4px solid var(--blue);
+  }
+</style>
+
+<script>
+(function() {
+  var drawer  = document.getElementById('sd-drawer');
+  var overlay = document.getElementById('sd-overlay');
+  var body    = document.getElementById('sd-body');
+  var symEl   = document.getElementById('sd-symbol');
+  var tagEl   = document.getElementById('sd-decision-tag');
+  var refreshMeta = document.querySelector('meta[http-equiv="refresh"]');
+
+  function pauseRefresh()  { if (refreshMeta) refreshMeta.removeAttribute('content'); }
+  function resumeRefresh() { if (refreshMeta) refreshMeta.setAttribute('content','30'); }
+
+  window.sdClose = function() {
+    drawer.classList.remove('open');
+    overlay.style.display = 'none';
+    resumeRefresh();
+  };
+
+  function fmt(v, prefix) {
+    if (!v && v !== 0) return '—';
+    return (prefix || '') + parseFloat(v).toFixed(2);
+  }
+  function fmtVol(v) {
+    if (!v) return '—';
+    if (v >= 1e6) return (v/1e6).toFixed(1)+'M';
+    if (v >= 1e3) return (v/1e3).toFixed(0)+'K';
+    return v;
+  }
+  function cls(val) { return val > 0 ? 'green' : val < 0 ? 'red' : ''; }
+
+  function scoreBar(label, val, max) {
+    var pct = Math.min(Math.max(((val||0)/((max||25)))*100, 0), 100);
+    return '<div class="sd-score-row"><span class="sd-score-name">' + label + '</span>' +
+      '<div class="sd-bar-track"><div class="sd-bar-fill" style="width:'+pct+'%"></div></div>' +
+      '<span class="sd-score-val">'+(val||0)+'</span></div>';
+  }
+
+  function render(data) {
+    var m = data.market || {}, sc = data.score, hist = data.history || [], info = data.info || {};
+    // Use live ORB plan when available (TRADE stocks); fall back to AI Layer 2 estimate
+    var plan = (data.orb_plan && sc && sc.decision === 'TRADE') ? data.orb_plan : null;
+    var html = '';
+
+    // Company info banner
+    if (info.company || info.industry || info.sector) {
+      html += '<div class="sd-company-bar">';
+      if (info.company) html += '<span class="sd-company-name">' + info.company + '</span>';
+      if (info.industry) html += '<span class="sd-company-chip">' + info.industry + '</span>';
+      if (info.sector)   html += '<span class="sd-company-chip dim">' + info.sector + '</span>';
+      html += '</div>';
+    }
+
+    html += '<div class="sd-section">';
+    html += '<div class="sd-price-row">';
+    html += '<span class="sd-price-big">'+(m.last ? '$'+m.last.toFixed(2) : '—')+'</span>';
+    if (m.day_change !== null && m.day_change !== undefined) {
+      var dc = m.day_change, dcp = m.day_change_pct, c = cls(dc);
+      html += '<div class="sd-change"><span class="'+c+'">'+(dc>=0?'+':'')+'$'+Math.abs(dc).toFixed(2)+'</span>' +
+        '<span class="'+c+' dim" style="font-size:10px">'+(dcp>=0?'+':'')+dcp+'%</span></div>';
+    }
+    html += '</div>';
+    html += '<div class="sd-grid">';
+    html += '<div class="sd-field"><span class="sd-label">Open</span><span class="sd-value">'+fmt(m.open,'$')+'</span></div>';
+    html += '<div class="sd-field"><span class="sd-label">Prev Close</span><span class="sd-value">'+fmt(m.prev_close,'$')+'</span></div>';
+    html += '<div class="sd-field"><span class="sd-label">High</span><span class="sd-value green">'+fmt(m.high,'$')+'</span></div>';
+    html += '<div class="sd-field"><span class="sd-label">Low</span><span class="sd-value red">'+fmt(m.low,'$')+'</span></div>';
+    html += '<div class="sd-field"><span class="sd-label">Volume</span><span class="sd-value">'+fmtVol(m.volume)+'</span></div>';
+    html += '<div class="sd-field"><span class="sd-label">VWAP</span><span class="sd-value">'+fmt(m.vwap,'$')+'</span></div>';
+    if (m.bid && m.ask) {
+      html += '<div class="sd-field"><span class="sd-label">Bid</span><span class="sd-value">'+fmt(m.bid,'$')+' <span class="dim" style="font-size:10px">×'+m.bid_size+'</span></span></div>';
+      html += '<div class="sd-field"><span class="sd-label">Ask</span><span class="sd-value">'+fmt(m.ask,'$')+' <span class="dim" style="font-size:10px">×'+m.ask_size+'</span></span></div>';
+    }
+    html += '</div></div>';
+
+    if (sc) {
+      html += '<div class="sd-section"><div class="sd-section-title">AI Score</div>';
+      if (sc.headline) html += '<div class="sd-headline">'+sc.headline+'</div>';
+      html += '<div class="sd-grid" style="margin-bottom:10px">';
+      html += '<div class="sd-field"><span class="sd-label">Score</span><span class="sd-value '+(sc.score_final>=75?'green':sc.score_final>=65?'warn':'')+'" style="font-size:18px;font-weight:700">'+(sc.score_final?Math.round(sc.score_final):'—')+'</span></div>';
+      html += '<div class="sd-field"><span class="sd-label">Catalyst</span><span class="sd-value">'+(sc.catalyst_type||'—')+'</span></div>';
+      html += '<div class="sd-field"><span class="sd-label">Sentiment</span><span class="sd-value '+(sc.sentiment==='bullish'?'green':sc.sentiment==='bearish'?'red':'')+'">'+(sc.sentiment||'—')+'</span></div>';
+      html += '<div class="sd-field"><span class="sd-label">Confidence</span><span class="sd-value">'+(sc.catalyst_confidence||'—')+'</span></div>';
+      html += '</div>';
+      html += '<div class="sd-score-bars">'+scoreBar('Catalyst',sc.score_catalyst,40)+scoreBar('Volume',sc.score_volume,20)+scoreBar('Gap',sc.score_gap,20)+scoreBar('ATR',sc.score_atr,15)+scoreBar('SPY',sc.score_spy,10)+'</div>';
+      if (sc.catalyst_reasoning) html += '<div class="sd-reasoning">'+sc.catalyst_reasoning+'</div>';
+      if (sc.skip_reason) html += '<div style="margin-top:8px;font-size:11px;color:var(--red)">Skip: '+sc.skip_reason+'</div>';
+      // Override row — shown for every decision so you can always change it
+      if (sc.ai_score_id) {
+        html += '<div class="sd-override-row">';
+        html += '<span style="font-size:10px;color:var(--muted)">Override:</span>';
+        html += _overrideBtns(data.symbol, sc.ai_score_id, sc.decision || 'SKIP');
+        html += '</div>';
+      }
+      html += '</div>';
+
+      if (plan || sc.entry_price) {
+        var e  = plan ? plan.entry_price : sc.entry_price;
+        var sl = plan ? plan.stop_price  : sc.stop_price;
+        var t1 = plan ? plan.t1_price    : sc.t1_price;
+        var t2 = plan ? plan.t2_price    : sc.t2_price;
+        var sh = plan ? plan.shares      : sc.shares;
+        var ri = plan ? plan.risk_amount : sc.risk_amount;
+        var planLabel = plan
+          ? 'Trade Plan <span style="font-size:9px;color:var(--green);font-weight:400;margin-left:4px">ORB ' + plan.orb_window + 'min</span>'
+          : 'Trade Plan <span style="font-size:9px;color:var(--muted);font-weight:400;margin-left:4px">AI estimate</span>';
+        html += '<div class="sd-section"><div class="sd-section-title">' + planLabel + '</div>';
+        if (plan) {
+          html += '<div style="font-size:10px;color:var(--subtext);margin-bottom:8px">ORB range: <span class="green" style="font-family:var(--font-mono)">' + fmt(plan.orb_high,'$') + '</span> / <span class="red" style="font-family:var(--font-mono)">' + fmt(plan.orb_low,'$') + '</span></div>';
+        }
+        html += '<div class="sd-plan-grid">';
+        html += '<div class="sd-plan-field"><span class="sd-label">Entry</span><span class="sd-value green">'+fmt(e,'$')+'</span></div>';
+        html += '<div class="sd-plan-field"><span class="sd-label">Stop</span><span class="sd-value red">'+fmt(sl,'$')+'</span></div>';
+        html += '<div class="sd-plan-field"><span class="sd-label">T1</span><span class="sd-value">'+fmt(t1,'$')+'</span></div>';
+        html += '<div class="sd-plan-field"><span class="sd-label">T2</span><span class="sd-value">'+fmt(t2,'$')+'</span></div>';
+        html += '<div class="sd-plan-field"><span class="sd-label">Shares</span><span class="sd-value">'+(sh||'—')+'</span></div>';
+        html += '<div class="sd-plan-field"><span class="sd-label">Risk</span><span class="sd-value">'+fmt(ri,'$')+'</span></div>';
+        html += '</div>';
+        if (e && sl && t1) {
+          var sp  = ((e-sl)/e*100).toFixed(1);
+          var rr1 = ((t1-e)/(e-sl)).toFixed(2);
+          var rr2 = t2 ? ((t2-e)/(e-sl)).toFixed(2) : null;
+          html += '<div class="sd-grid" style="margin-top:8px">';
+          html += '<div class="sd-field"><span class="sd-label">Stop %</span><span class="sd-value '+(parseFloat(sp)>5?'red':'')+'">'+sp+'%</span></div>';
+          html += '<div class="sd-field"><span class="sd-label">R:R to T1</span><span class="sd-value green">'+rr1+'R</span></div>';
+          if (rr2) html += '<div class="sd-field"><span class="sd-label">R:R to T2</span><span class="sd-value green">'+rr2+'R</span></div>';
+          html += '</div>';
+        }
+        html += '</div>';
+      }
+    }
+
+    if (hist.length) {
+      html += '<div class="sd-section"><div class="sd-section-title">Trade History ('+hist.length+')</div>';
+      html += '<table class="sd-hist-table"><thead><tr><th>Date</th><th>Exit</th><th class="r">Entry</th><th class="r">Exit $</th><th class="r">P&L</th><th class="r">R</th></tr></thead><tbody>';
+      for (var i=0;i<hist.length;i++) {
+        var h=hist[i], pnl=parseFloat(h.pnl||0), rm=parseFloat(h.r_multiple||0);
+        html += '<tr><td class="dim" style="font-size:10px">'+(h.trade_date?h.trade_date.slice(0,10):'—')+'</td>';
+        html += '<td><span class="tag tag-'+(h.exit_reason?h.exit_reason.toLowerCase():'closed')+'" style="font-size:9px">'+(h.exit_reason||'—')+'</span></td>';
+        html += '<td class="r">'+fmt(h.filled_entry||h.entry_price,'$')+'</td>';
+        html += '<td class="r">'+fmt(h.exit_price,'$')+'</td>';
+        html += '<td class="r '+cls(pnl)+'">'+(pnl>=0?'+':'')+'$'+pnl.toFixed(2)+'</td>';
+        html += '<td class="r '+cls(rm)+'">'+rm.toFixed(2)+'R</td></tr>';
+      }
+      html += '</tbody></table></div>';
+    } else {
+      html += '<div class="sd-section"><div class="sd-section-title">Trade History</div><div style="color:var(--muted);font-size:11px;padding:8px 0">No closed trades for this symbol.</div></div>';
+    }
+
+    body.innerHTML = html;
+  }
+
+  function openDrawer(symbol) {
+    symEl.textContent = symbol;
+    tagEl.innerHTML = '';
+    body.innerHTML = '<div id="sd-loading">Loading…</div>';
+    overlay.style.display = 'block';
+    drawer.classList.add('open');
+    pauseRefresh();
+    fetch('/api/stock/' + symbol)
+      .then(function(r){ return r.json(); })
+      .then(function(data){
+        if (data.score && data.score.decision)
+          tagEl.innerHTML = '<span class="tag tag-'+data.score.decision.toLowerCase()+'">'+data.score.decision+'</span>';
+        render(data);
+      })
+      .catch(function(){ body.innerHTML = '<div style="color:var(--red);padding:20px 0;font-size:12px">Failed to load data.</div>'; });
+  }
+
+  document.querySelectorAll('.sym-row').forEach(function(row){
+    row.addEventListener('click', function(){ openDrawer(this.dataset.symbol); });
+  });
+  document.addEventListener('keydown', function(e){ if(e.key==='Escape') sdClose(); });
+})();
+
+// ── Filter & Sort ───────────────────────────────────────────────
+(function() {
+  var activeFilters = { decision: 'ALL', type: 'ALL' };
+  var searchText = '';
+  var currentSort = { key: null, dir: 'desc' };
+
+  var table = document.getElementById('candidates-table');
+  if (!table) return;
+  var tbody = table.querySelector('tbody');
+  if (!tbody) return;
+
+  function getRows() { return Array.prototype.slice.call(tbody.querySelectorAll('tr.sym-row')); }
+
+  // ── Filtering
+  function applyFilters() {
+    var rows = getRows();
+    var shown = 0;
+    rows.forEach(function(row) {
+      var dec  = (row.dataset.decision || '').toUpperCase();
+      var typ  = (row.dataset.type || '').toLowerCase();
+      var sym  = (row.dataset.symbol || '').toUpperCase();
+      var show = true;
+      if (activeFilters.decision !== 'ALL' && dec !== activeFilters.decision) show = false;
+      if (activeFilters.type !== 'ALL' && typ !== activeFilters.type) show = false;
+      if (searchText && sym.indexOf(searchText) === -1) show = false;
+      row.style.display = show ? '' : 'none';
+      if (show) shown++;
+    });
+    var countEl = document.getElementById('filter-count');
+    var isFiltered = activeFilters.decision !== 'ALL' || activeFilters.type !== 'ALL' || searchText;
+    if (countEl) countEl.textContent = isFiltered ? shown + ' / ' + rows.length : '';
+  }
+
+  // Filter pill clicks
+  document.querySelectorAll('.filter-pill').forEach(function(pill) {
+    pill.addEventListener('click', function() {
+      var grp = this.dataset.filter;
+      var val = this.dataset.val;
+      // Toggle: clicking active ALL resets, clicking active non-ALL resets to ALL
+      activeFilters[grp] = val;
+      // Update active state in this group
+      var siblings = document.querySelectorAll('.filter-pill[data-filter="' + grp + '"]');
+      siblings.forEach(function(s) { s.classList.remove('active'); });
+      this.classList.add('active');
+      applyFilters();
+    });
+  });
+
+  // Search input
+  var searchInput = document.getElementById('filter-search');
+  if (searchInput) {
+    searchInput.addEventListener('input', function() {
+      searchText = this.value.trim().toUpperCase();
+      applyFilters();
+    });
+  }
+
+  // ── Sorting
+  var sortValGetters = {
+    symbol:   function(r) { return (r.dataset.symbol || '').toUpperCase(); },
+    type:     function(r) { return (r.dataset.type || ''); },
+    gap:      function(r) { return parseFloat(r.dataset.gap) || 0; },
+    pmvol:    function(r) { return parseFloat(r.dataset.pmvol) || 0; },
+    atr:      function(r) { return parseFloat(r.dataset.atr) || 0; },
+    score:    function(r) { return parseFloat(r.dataset.score) || 0; },
+    decision: function(r) { var d = (r.dataset.decision||''); return d === 'TRADE' ? 3 : d === 'WATCH' ? 2 : d === 'SKIP' ? 1 : 0; },
+  };
+
+  document.querySelectorAll('.sortable').forEach(function(th) {
+    th.addEventListener('click', function() {
+      var key = this.dataset.sort;
+      if (!key || !sortValGetters[key]) return;
+
+      // Toggle direction
+      if (currentSort.key === key) {
+        currentSort.dir = currentSort.dir === 'asc' ? 'desc' : 'asc';
+      } else {
+        currentSort.key = key;
+        // Default: numbers desc, strings asc
+        currentSort.dir = (key === 'symbol' || key === 'type') ? 'asc' : 'desc';
+      }
+
+      // Update header indicators
+      document.querySelectorAll('.sortable').forEach(function(s) { s.classList.remove('sort-asc', 'sort-desc'); });
+      this.classList.add(currentSort.dir === 'asc' ? 'sort-asc' : 'sort-desc');
+
+      // Sort rows
+      var rows = getRows();
+      var getter = sortValGetters[key];
+      var dir = currentSort.dir === 'asc' ? 1 : -1;
+      rows.sort(function(a, b) {
+        var va = getter(a), vb = getter(b);
+        if (typeof va === 'string') return va.localeCompare(vb) * dir;
+        return (va - vb) * dir;
+      });
+      rows.forEach(function(r) { tbody.appendChild(r); });
+    });
+  });
+})();
+
+// Build the correct button set for a given current decision
+function _overrideBtns(sym, sid, dec) {
+  var w = '<button class="wl-btn wl-btn-watch" onclick="override(\'' + sym + '\',' + sid + ',\'WATCH\',event)">WATCH</button>';
+  var t = '<button class="wl-btn wl-btn-trade" onclick="override(\'' + sym + '\',' + sid + ',\'TRADE\',event)">TRADE</button>';
+  var s = '<button class="wl-btn wl-btn-skip"  onclick="override(\'' + sym + '\',' + sid + ',\'SKIP\',event)">SKIP</button>';
+  if (dec === 'TRADE') return w + s;
+  if (dec === 'WATCH') return t + s;
+  return w + t;
+}
+
+window.override = function(symbol, scoreId, decision, e) {
+  e.stopPropagation();
+  var btn = e.currentTarget;
+  btn.disabled = true;
+  var origText = btn.textContent;
+  btn.textContent = '…';
+  fetch('/api/override/' + scoreId, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ decision: decision }),
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    if (!data.ok) {
+      btn.disabled = false; btn.textContent = origText;
+      // Show ORB-not-ready as a subtle button tooltip, not a blocking alert
+      btn.title = data.error || 'Error';
+      btn.style.opacity = '0.5';
+      setTimeout(function(){ btn.style.opacity = ''; btn.title = ''; }, 4000);
+      if (!(data.error || '').includes('ORB not available')) alert('Error: ' + data.error);
+      return;
+    }
+
+    var planHtml = '';
+    if (decision === 'TRADE' && data.plan) {
+      var p = data.plan;
+      var stopSrc = data.stop_source ? ' <span style="font-size:8.5px;opacity:0.6">(' + data.stop_source + ')</span>' : '';
+      planHtml = '<span class="wl-plan-pill" style="margin-left:4px">E <strong class="green">$' + p.entry_price.toFixed(2) + '</strong></span>' +
+                 '<span class="wl-plan-pill">SL <strong class="red">$' + p.stop_price.toFixed(2) + '</strong>' + stopSrc + '</span>' +
+                 '<span class="wl-plan-pill">T1 <strong>$' + p.t1_price.toFixed(2) + '</strong></span>' +
+                 '<span class="wl-plan-pill">T2 <strong>$' + p.t2_price.toFixed(2) + '</strong></span>' +
+                 '<span class="wl-plan-pill dim">' + p.shares + ' sh</span>';
+
+      // Update the plan cells in the candidates table row
+      var sp = ((p.entry_price - p.stop_price) / p.entry_price * 100).toFixed(1);
+      var spCls = parseFloat(sp) > 5 ? 'red' : '';
+      var cells = {
+        'td-entry-'   : '$' + p.entry_price.toFixed(2),
+        'td-stop-'    : '$' + p.stop_price.toFixed(2),
+        'td-t1-'      : '$' + p.t1_price.toFixed(2),
+        'td-t2-'      : '$' + p.t2_price.toFixed(2),
+        'td-shares-'  : p.shares,
+        'td-risk-'    : '$' + p.risk_amount.toFixed(2),
+      };
+      Object.keys(cells).forEach(function(prefix) {
+        var el = document.getElementById(prefix + symbol);
+        if (el) el.textContent = cells[prefix];
+      });
+      var spEl = document.getElementById('td-stoppct-' + symbol);
+      if (spEl) spEl.innerHTML = '<span class="' + spCls + '" style="font-family:var(--font-mono)">' + sp + '%</span>';
+    } else if (decision !== 'TRADE') {
+      // Downgrading — clear plan cells
+      ['td-entry-','td-stop-','td-t1-','td-t2-','td-shares-','td-risk-'].forEach(function(prefix) {
+        var el = document.getElementById(prefix + symbol);
+        if (el) el.innerHTML = '<span class="dim">—</span>';
+      });
+      var spEl = document.getElementById('td-stoppct-' + symbol);
+      if (spEl) spEl.innerHTML = '<span class="dim">—</span>';
+    }
+
+    // ── 1. Update candidates table tag + buttons (always present for passed rows)
+    var tableRow = document.querySelector('tr[data-symbol="' + symbol + '"]');
+    if (tableRow) tableRow.dataset.decision = decision;
+    var tableTag = document.getElementById('dt-' + symbol);
+    if (tableTag) {
+      tableTag.className = 'tag tag-' + decision.toLowerCase();
+      tableTag.textContent = decision;
+    }
+    var tableBtns = document.getElementById('dt-btns-' + symbol);
+    if (tableBtns) tableBtns.innerHTML = _overrideBtns(symbol, scoreId, decision) + planHtml;
+
+    // ── 2. Watch & Skip section
+    var wlItem = document.getElementById('wl-' + symbol);
+    var wlList = document.querySelector('.db-watchlist');
+
+    if (decision === 'TRADE') {
+      // Remove from watchlist — was WATCH or SKIP, now TRADE
+      if (wlItem) {
+        wlItem.style.transition = 'opacity 0.2s';
+        wlItem.style.opacity = '0';
+        setTimeout(function() {
+          wlItem.remove();
+          // Show empty state if watchlist is now empty
+          if (wlList && !wlList.querySelector('.db-watch-item')) {
+            wlList.innerHTML = '<div class="empty" style="padding:16px"><span class="empty-label">All scored candidates marked as TRADE</span></div>';
+          }
+        }, 200);
+      }
+    } else {
+      if (wlItem) {
+        // Already in the watchlist — update tag + buttons in place
+        var wlTag = document.getElementById('wl-tag-' + symbol);
+        if (wlTag) { wlTag.className = 'tag tag-' + decision.toLowerCase() + ' wl-decision-tag'; wlTag.textContent = decision; }
+        var wlBtns = document.getElementById('wl-btns-' + symbol);
+        if (wlBtns) wlBtns.innerHTML = _overrideBtns(symbol, scoreId, decision);
+      } else if (wlList) {
+        // Symbol was TRADE — not in watchlist yet — inject a new card
+        var empty = wlList.querySelector('.empty');
+        if (empty) empty.remove();
+        var newItem = document.createElement('div');
+        newItem.className = 'db-watch-item';
+        newItem.id = 'wl-' + symbol;
+        newItem.style.opacity = '0';
+        newItem.style.transition = 'opacity 0.2s';
+        newItem.innerHTML =
+          '<span class="sym sym-link" style="font-size:12px;cursor:pointer" onclick="openDrawer(\'' + symbol + '\')">' + symbol + '</span>' +
+          '<span class="tag tag-' + decision.toLowerCase() + ' wl-decision-tag" id="wl-tag-' + symbol + '">' + decision + '</span>' +
+          '<div class="wl-override-btns" id="wl-btns-' + symbol + '">' + _overrideBtns(symbol, scoreId, decision) + '</div>';
+        wlList.appendChild(newItem);
+        requestAnimationFrame(function() { newItem.style.opacity = '1'; });
+      }
+    }
+  })
+  .catch(function() { btn.disabled = false; btn.textContent = origText; });
+};
+
+// ── Add stock manually ──────────────────────────────────────
+window.addStock = function(e) {
+  e.preventDefault();
+  var input = document.getElementById('add-stock-input');
+  var btn   = document.getElementById('add-stock-btn');
+  var sym   = input.value.trim().toUpperCase();
+  if (!sym) return false;
+
+  btn.disabled = true;
+  btn.textContent = 'Adding…';
+
+  fetch('/api/add-stock', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ symbol: sym }),
+  })
+  .then(function(r) { return r.json(); })
+  .then(function(data) {
+    btn.disabled = false;
+    btn.textContent = '+ Add';
+    if (!data.ok) {
+      input.style.borderColor = 'var(--red)';
+      input.title = data.error || 'Error';
+      setTimeout(function(){ input.style.borderColor = ''; input.title = ''; }, 3000);
+      return;
+    }
+    input.value = '';
+    // Reload the page to show the new stock with all computed values
+    window.location.reload();
+  })
+  .catch(function() {
+    btn.disabled = false;
+    btn.textContent = '+ Add';
+  });
+  return false;
+};
+</script>
+{% endblock %}

@@ -1,0 +1,519 @@
+{% extends "base.html" %}
+{% block title %}Account Progress{% endblock %}
+{% block ts %}{{ now }}{% endblock %}
+
+{% block content %}
+<h1>Account Progress</h1>
+
+<!-- ── Hero row: account panel + plan panel ──────────────────────────── -->
+<div class="prog-hero">
+
+  <!-- Left: live account overview -->
+  <div class="prog-account card">
+    <div class="prog-account-header">
+      <span class="prog-section-label">Portfolio Value</span>
+      {% if alpaca %}
+        <span class="prog-live-badge">
+          <span class="live-dot"></span> Live · Alpaca
+        </span>
+      {% endif %}
+    </div>
+
+    {% if alpaca %}
+      {% set gain_pct = ((alpaca.equity - start_balance) / start_balance * 100)|round(2) %}
+      <div class="prog-balance">
+        ${{ "%.2f"|format(alpaca.equity) }}
+        <span class="prog-balance-pct {% if gain_pct >= 0 %}green{% else %}red{% endif %}">
+          {% if gain_pct >= 0 %}▲{% else %}▼{% endif %} {{ gain_pct|abs }}%
+        </span>
+      </div>
+      <div class="prog-balance-sub dim">since start · ${{ "%.2f"|format(start_balance) }} base</div>
+
+      <div class="prog-account-grid">
+        <div class="prog-kv">
+          <span class="prog-kv-label">Today's Change</span>
+          <span class="prog-kv-value {% if today_change > 0 %}green{% elif today_change < 0 %}red{% endif %}">
+            {% if today_change > 0 %}+{% endif %}${{ "%.2f"|format(today_change) }}
+          </span>
+        </div>
+        <div class="prog-kv">
+          <span class="prog-kv-label">Unrealized P&amp;L</span>
+          <span class="prog-kv-value {% if alpaca.unrealized_pl > 0 %}green{% elif alpaca.unrealized_pl < 0 %}red{% endif %}">
+            {% if alpaca.unrealized_pl > 0 %}+{% endif %}${{ "%.2f"|format(alpaca.unrealized_pl) }}
+          </span>
+        </div>
+        <div class="prog-kv">
+          <span class="prog-kv-label">Cash</span>
+          <span class="prog-kv-value">${{ "%.2f"|format(alpaca.cash) }}</span>
+        </div>
+        <div class="prog-kv">
+          <span class="prog-kv-label">Buying Power</span>
+          <span class="prog-kv-value">${{ "%.0f"|format(alpaca.buying_power) }}</span>
+        </div>
+      </div>
+
+      {% if alpaca.status %}
+      <div class="prog-status-row">
+        <span class="tag {% if alpaca.status == 'ACTIVE' %}tag-trade{% else %}tag-watch{% endif %}">
+          {{ alpaca.status }}
+        </span>
+        <span class="dim" style="font-size:10px">Alpaca Paper Account</span>
+      </div>
+      {% endif %}
+
+    {% else %}
+      <div class="prog-balance" style="color:var(--amber)">Unavailable</div>
+      <div class="prog-balance-sub dim">Could not reach Alpaca API</div>
+    {% endif %}
+  </div>
+
+  <!-- Right: trading plan -->
+  <div class="prog-plan card">
+    <div class="prog-account-header">
+      <span class="prog-section-label">Trading Plan</span>
+      <span class="dim" style="font-size:10px">{{ monthly_target }}% / month target</span>
+    </div>
+
+    <div class="prog-plan-main">
+      <div class="prog-plan-vs">
+        <div class="prog-kv-label" style="margin-bottom:4px">vs Plan</div>
+        <div class="prog-plan-vs-val {% if vs_plan >= 0 %}green{% else %}red{% endif %}">
+          {% if vs_plan >= 0 %}+{% endif %}${{ "%.2f"|format(vs_plan) }}
+        </div>
+      </div>
+      <div class="prog-plan-divider"></div>
+      <div class="prog-plan-details">
+        <div class="prog-kv">
+          <span class="prog-kv-label">Plan Target Today</span>
+          <span class="prog-kv-value blue">${{ "%.2f"|format(plan_today) }}</span>
+        </div>
+        <div class="prog-kv">
+          <span class="prog-kv-label">Days Traded</span>
+          <span class="prog-kv-value">{{ days_traded }}</span>
+        </div>
+        <div class="prog-kv">
+          <span class="prog-kv-label">Max Drawdown</span>
+          <span class="prog-kv-value {% if max_dd > 0 %}red{% endif %}">
+            {% if max_dd > 0 %}-${{ "%.2f"|format(max_dd) }}{% else %}<span class="dim">—</span>{% endif %}
+          </span>
+        </div>
+        <div class="prog-kv">
+          <span class="prog-kv-label">Monthly Target</span>
+          <span class="prog-kv-value blue">{{ monthly_target }}%</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Progress bar: actual vs plan -->
+    {% if days_traded > 0 %}
+    {% set prog_pct = [(alpaca.equity / plan_today * 100) if alpaca else (current_balance / plan_today * 100), 100]|min %}
+    <div class="prog-bar-section">
+      <div style="display:flex;justify-content:space-between;margin-bottom:5px">
+        <span style="font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px">Progress to plan</span>
+        <span style="font-size:10px;font-family:var(--font-mono);color:var(--subtext)">{{ "%.1f"|format(prog_pct) }}%</span>
+      </div>
+      <div class="prog-track">
+        <div class="prog-fill {% if prog_pct >= 100 %}green-fill{% elif prog_pct >= 80 %}blue-fill{% else %}amber-fill{% endif %}"
+             style="width:{{ prog_pct }}%"></div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+
+<!-- ── Session streak ────────────────────────────────────────────── -->
+{% if streak %}
+<div class="card prog-streak-card">
+  <h2>Recent Sessions <span class="h2-count">last {{ streak|length }} days</span></h2>
+  <div class="prog-streak">
+    {% for s in streak %}
+    <div class="prog-streak-day {% if s.daily_pnl > 0 %}streak-win{% elif s.daily_pnl < 0 %}streak-loss{% else %}streak-flat{% endif %}">
+      <div class="prog-streak-dot"></div>
+      <div class="prog-streak-info">
+        <span class="prog-streak-date dim">{{ s.trade_date.strftime('%m/%d') if s.trade_date else '—' }}</span>
+        <span class="prog-streak-pnl {% if s.daily_pnl > 0 %}green{% elif s.daily_pnl < 0 %}red{% endif %}">
+          {% if s.daily_pnl > 0 %}+{% endif %}${{ "%.2f"|format(s.daily_pnl) }}
+        </span>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- ── Performance strip ─────────────────────────────────────────── -->
+<div class="prog-strip card">
+  <div class="prog-strip-item">
+    <span class="prog-kv-label">Total Trades</span>
+    <span class="prog-strip-val">{{ overall.total_trades or 0 }}</span>
+  </div>
+  <div class="prog-strip-divider"></div>
+  <div class="prog-strip-item">
+    <span class="prog-kv-label">Win Rate</span>
+    <span class="prog-strip-val {% if (overall.win_rate or 0) >= 50 %}green{% else %}red{% endif %}">
+      {{ overall.win_rate or "—" }}{% if overall.win_rate %}%{% endif %}
+    </span>
+  </div>
+  <div class="prog-strip-divider"></div>
+  <div class="prog-strip-item">
+    <span class="prog-kv-label">Avg R-Multiple</span>
+    <span class="prog-strip-val {% if (overall.avg_r or 0) > 0 %}green{% elif (overall.avg_r or 0) < 0 %}red{% endif %}">
+      {{ overall.avg_r or "—" }}{% if overall.avg_r %}R{% endif %}
+    </span>
+  </div>
+  <div class="prog-strip-divider"></div>
+  <div class="prog-strip-item">
+    <span class="prog-kv-label">Total P&amp;L</span>
+    <span class="prog-strip-val {% if (overall.total_pnl or 0) > 0 %}green{% elif (overall.total_pnl or 0) < 0 %}red{% endif %}">
+      ${{ "%.2f"|format(overall.total_pnl or 0) }}
+    </span>
+  </div>
+  <div class="prog-strip-divider"></div>
+  <div class="prog-strip-item">
+    <span class="prog-kv-label">Best Trade</span>
+    <span class="prog-strip-val green">{{ overall.best_r or "—" }}{% if overall.best_r %}R{% endif %}</span>
+  </div>
+  <div class="prog-strip-divider"></div>
+  <div class="prog-strip-item">
+    <span class="prog-kv-label">Worst Trade</span>
+    <span class="prog-strip-val red">{{ overall.worst_r or "—" }}{% if overall.worst_r %}R{% endif %}</span>
+  </div>
+</div>
+
+<!-- ── Daily equity table ─────────────────────────────────────────────── -->
+<div class="card">
+  <h2>
+    Daily P&amp;L — Actual vs Plan
+    {% if curve %}
+      <span class="h2-count">{{ curve|length }} days</span>
+    {% endif %}
+  </h2>
+  {% if curve %}
+  <div class="card-table">
+  <table>
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th class="num">Daily P&amp;L</th>
+        <th class="num">Actual Balance</th>
+        <th class="num">Plan Balance</th>
+        <th class="num">vs Plan</th>
+        <th class="num">Trades</th>
+        <th style="min-width:160px">Equity</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in curve %}
+      {% set diff = row.actual_balance - row.plan_balance %}
+      {% set pct = ((row.actual_balance - start_balance) / start_balance * 100)|round(1) %}
+      <tr>
+        <td class="dim" style="font-family:var(--font-mono);font-size:11px">{{ row.date }}</td>
+        <td class="num {% if row.daily_pnl > 0 %}green{% elif row.daily_pnl < 0 %}red{% endif %}"
+            style="font-family:var(--font-mono)">
+          {% if row.daily_pnl >= 0 %}+{% endif %}${{ "%.2f"|format(row.daily_pnl) }}
+        </td>
+        <td class="num {% if row.actual_balance >= start_balance %}green{% else %}red{% endif %}"
+            style="font-family:var(--font-mono)">
+          ${{ "%.0f"|format(row.actual_balance) }}
+        </td>
+        <td class="num dim" style="font-family:var(--font-mono)">${{ "%.0f"|format(row.plan_balance) }}</td>
+        <td class="num {% if diff >= 0 %}green{% else %}red{% endif %}"
+            style="font-family:var(--font-mono)">
+          {% if diff >= 0 %}+{% endif %}${{ "%.0f"|format(diff) }}
+        </td>
+        <td class="num dim" style="font-family:var(--font-mono)">{{ row.trades }}</td>
+        <td>
+          <div class="bar-wrap">
+            <div class="bar-bg">
+              <div class="bar-fill"
+                   style="width:{{ [pct|abs, 100]|min }}%;{% if pct < 0 %}background:var(--red){% endif %}">
+              </div>
+            </div>
+            <span class="bar-label {% if pct >= 0 %}green{% else %}red{% endif %}">
+              {% if pct >= 0 %}+{% endif %}{{ pct }}%
+            </span>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <div class="empty">
+    <span class="empty-icon">◈</span>
+    <span class="empty-label">No trading history yet</span>
+  </div>
+  {% endif %}
+</div>
+
+<style>
+  /* ── Hero layout ──────────────────────────────────────────────────── */
+  .prog-hero {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  @media (max-width: 720px) {
+    .prog-hero { grid-template-columns: 1fr; }
+  }
+
+  .prog-account,
+  .prog-plan {
+    padding: 20px 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  /* ── Section header inside panel ──────────────────────────────────── */
+  .prog-account-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+
+  .prog-section-label {
+    font-size: 9.5px;
+    font-weight: 700;
+    color: var(--subtext);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+  }
+
+  .prog-live-badge {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 9.5px;
+    color: var(--green);
+    font-weight: 600;
+    letter-spacing: 0.3px;
+  }
+
+  /* ── Big balance number ────────────────────────────────────────────── */
+  .prog-balance {
+    font-family: var(--font-mono);
+    font-size: 36px;
+    font-weight: 700;
+    color: var(--text-strong);
+    letter-spacing: -1.5px;
+    line-height: 1;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 4px;
+  }
+
+  .prog-balance-pct {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: -0.2px;
+  }
+
+  .prog-balance-sub {
+    font-size: 10.5px;
+    margin-bottom: 18px;
+  }
+
+  /* ── KV grid inside panels ─────────────────────────────────────────── */
+  .prog-account-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px 20px;
+    margin-bottom: 16px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+  }
+
+  .prog-kv {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .prog-kv-label {
+    font-size: 9.5px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.55px;
+  }
+
+  .prog-kv-value {
+    font-family: var(--font-mono);
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--text-strong);
+  }
+
+  .prog-status-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+    margin-top: auto;
+  }
+
+  /* ── Plan panel internals ──────────────────────────────────────────── */
+  .prog-plan-main {
+    display: flex;
+    gap: 20px;
+    flex: 1;
+    margin-bottom: 18px;
+  }
+
+  .prog-plan-vs {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    flex-shrink: 0;
+    padding-right: 20px;
+  }
+
+  .prog-plan-vs-val {
+    font-family: var(--font-mono);
+    font-size: 30px;
+    font-weight: 700;
+    letter-spacing: -1px;
+    line-height: 1;
+    margin-top: 4px;
+  }
+
+  .prog-plan-divider {
+    width: 1px;
+    background: var(--border);
+    flex-shrink: 0;
+    align-self: stretch;
+  }
+
+  .prog-plan-details {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px 16px;
+    flex: 1;
+    align-content: start;
+  }
+
+  /* ── Plan progress bar ──────────────────────────────────────────────── */
+  .prog-bar-section {
+    border-top: 1px solid var(--border);
+    padding-top: 14px;
+    margin-top: auto;
+  }
+
+  .prog-track {
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  .prog-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.6s ease;
+  }
+
+  .prog-fill.green-fill { background: var(--green); }
+  .prog-fill.blue-fill  { background: var(--blue); }
+  .prog-fill.amber-fill { background: var(--amber); }
+
+  /* ── Performance strip ──────────────────────────────────────────────── */
+  .prog-strip {
+    display: flex;
+    align-items: stretch;
+    padding: 0;
+    margin-bottom: 10px;
+  }
+
+  .prog-strip-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 14px 10px;
+    text-align: center;
+  }
+
+  .prog-strip-divider {
+    width: 1px;
+    background: var(--border);
+    align-self: stretch;
+    margin: 10px 0;
+  }
+
+  .prog-strip-val {
+    font-family: var(--font-mono);
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-strong);
+    letter-spacing: -0.3px;
+  }
+
+  /* ── Session streak ──────────────────────────────────────────────── */
+  .prog-streak-card { margin-bottom: 10px; }
+
+  .prog-streak {
+    display: flex;
+    align-items: stretch;
+    padding: 16px 20px;
+    gap: 8px;
+  }
+
+  .prog-streak-day {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 8px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--bg-thead);
+    transition: border-color 0.12s;
+  }
+
+  .prog-streak-day:hover { border-color: var(--border-med); }
+
+  .streak-win  { border-left: 3px solid var(--green); }
+  .streak-loss { border-left: 3px solid var(--red); }
+  .streak-flat { border-left: 3px solid var(--border-med); }
+
+  .prog-streak-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--border-med);
+    flex-shrink: 0;
+  }
+
+  .streak-win  .prog-streak-dot { background: var(--green); }
+  .streak-loss .prog-streak-dot { background: var(--red); }
+
+  .prog-streak-info {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .prog-streak-date {
+    font-family: var(--font-mono);
+    font-size: 10px;
+  }
+
+  .prog-streak-pnl {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+  }
+</style>
+{% endblock %}

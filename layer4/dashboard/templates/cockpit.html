@@ -1,0 +1,362 @@
+{% extends "base.html" %}
+{% block title %}Cockpit — {{ today }}{% endblock %}
+{% block ts %}{{ now }} &mdash; &#8635; 30s{% endblock %}
+{% set refresh = 30 %}
+
+{% block content %}
+
+{% if ctx.session_halted %}
+<div class="halted-banner">
+  ⊘ &nbsp;Session halted — {{ ctx.halt_reason or "daily loss limit reached" }}
+</div>
+{% endif %}
+
+<!-- ── Page header ────────────────────────────────────────────────────────── -->
+<h1>
+  Trade Cockpit
+  <span class="dim" style="font-size:11px;font-weight:400">{{ today }}</span>
+  {% if live_trades %}<span class="live-dot" title="Live positions active"></span>{% endif %}
+  <div class="h1-right">
+    <div class="ck-session-strip">
+      <div class="ck-stat">
+        <span class="ck-stat-label">Session P&L</span>
+        <span class="ck-stat-val {% if today_pnl > 0 %}green{% elif today_pnl < 0 %}red{% endif %}">
+          {% if today_pnl > 0 %}+{% endif %}${{ "%.2f"|format(today_pnl) }}
+        </span>
+      </div>
+      <div class="ck-stat-sep"></div>
+      <div class="ck-stat">
+        <span class="ck-stat-label">Trades</span>
+        <span class="ck-stat-val">{{ ctx.trades_count }}<span class="dim" style="font-size:11px">/3</span></span>
+      </div>
+      <div class="ck-stat-sep"></div>
+      <div class="ck-stat">
+        <span class="ck-stat-label">Risk / Trade</span>
+        <span class="ck-stat-val">${{ ctx.risk_budget|int }}</span>
+      </div>
+      <div class="ck-stat-sep"></div>
+      <div class="ck-stat">
+        <span class="ck-stat-label">VIX</span>
+        <span class="ck-stat-val {% if ctx.vix >= 30 %}red{% elif ctx.vix >= 20 %}warn{% endif %}">
+          {{ "%.1f"|format(ctx.vix) if ctx.vix else "—" }}
+        </span>
+      </div>
+    </div>
+  </div>
+</h1>
+
+<!-- ── Two-column terminal layout ────────────────────────────────────────── -->
+<div class="ck-layout">
+
+  <!-- Left column: positions + closed trades -->
+  <div class="ck-main">
+
+    <!-- Open positions -->
+    <div class="card">
+      <h2>
+        {% if live_trades %}<span class="live-dot"></span>{% endif %}
+        Open Positions
+        {% if live_trades %}
+          <span class="h2-count">{{ live_trades|length }} active</span>
+        {% endif %}
+      </h2>
+      {% if live_trades %}
+      <div class="card-table">
+      <table>
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Status</th>
+            <th class="num">Entry</th>
+            <th class="num">Stop</th>
+            <th class="num">T1</th>
+            <th class="num">T2</th>
+            <th class="num">Current</th>
+            <th class="num">Live P&amp;L</th>
+            <th class="num">R</th>
+            <th class="num">Shares</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in live_trades %}
+          <tr>
+            <td><span class="sym">{{ t.symbol }}</span></td>
+            <td><span class="tag tag-{{ t.status|lower }}">{{ t.status }}</span></td>
+            <td class="num green" style="font-family:var(--font-mono)">${{ "%.2f"|format(t.filled_entry or t.entry_price or 0) }}</td>
+            <td class="num red"   style="font-family:var(--font-mono)">${{ "%.2f"|format(t.stop_price or 0) }}</td>
+            <td class="num"       style="font-family:var(--font-mono)">${{ "%.2f"|format(t.t1_price or 0) }}</td>
+            <td class="num"       style="font-family:var(--font-mono)">${{ "%.2f"|format(t.t2_price or 0) }}</td>
+            <td class="num">
+              {% if t.live_price %}
+                <strong style="font-family:var(--font-mono)">${{ "%.2f"|format(t.live_price) }}</strong>
+              {% else %}<span class="dim">—</span>{% endif %}
+            </td>
+            <td class="num {% if t.live_pnl > 0 %}green{% elif t.live_pnl < 0 %}red{% endif %}"
+                style="font-family:var(--font-mono)">
+              ${{ "%.2f"|format(t.live_pnl) }}
+            </td>
+            <td class="num {% if t.r_current > 0 %}green{% elif t.r_current < 0 %}red{% endif %}"
+                style="font-family:var(--font-mono)">
+              {{ "%.2f"|format(t.r_current) }}R
+            </td>
+            <td class="num" style="font-family:var(--font-mono)">{{ t.shares }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      {% else %}
+      <div class="empty">
+        <span class="empty-icon">◎</span>
+        <span class="empty-label">No open positions</span>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Today's closed trades -->
+    <div class="card">
+      <h2>
+        Today's Closed Trades
+        {% if closed_trades %}
+          <span class="h2-count">{{ closed_trades|length }}</span>
+        {% endif %}
+      </h2>
+      {% if closed_trades %}
+      <div class="card-table">
+      <table>
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th class="num">Entry</th>
+            <th class="num">Exit</th>
+            <th>Reason</th>
+            <th class="num">P&amp;L</th>
+            <th class="num">R-Mult</th>
+            <th class="num">Slippage</th>
+            <th class="num">Shares</th>
+            <th>Confirmed</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in closed_trades %}
+          <tr>
+            <td><span class="sym">{{ t.symbol }}</span></td>
+            <td class="num" style="font-family:var(--font-mono)">${{ "%.2f"|format(t.filled_entry or t.entry_price or 0) }}</td>
+            <td class="num" style="font-family:var(--font-mono)">${{ "%.2f"|format(t.exit_price or 0) }}</td>
+            <td>
+              <span class="tag tag-{{ t.exit_reason|lower if t.exit_reason else 'closed' }}">
+                {{ t.exit_reason or "—" }}
+              </span>
+            </td>
+            <td class="num {% if (t.pnl or 0) > 0 %}green{% elif (t.pnl or 0) < 0 %}red{% endif %}"
+                style="font-family:var(--font-mono)">
+              ${{ "%.2f"|format(t.pnl or 0) }}
+            </td>
+            <td class="num {% if (t.r_multiple or 0) > 0 %}green{% elif (t.r_multiple or 0) < 0 %}red{% endif %}"
+                style="font-family:var(--font-mono)">
+              {{ "%.2f"|format(t.r_multiple or 0) }}R
+            </td>
+            <td class="num" style="font-family:var(--font-mono)">
+              {% if t.filled_entry and t.entry_price and t.filled_entry != t.entry_price %}
+                {% set slip = t.filled_entry - t.entry_price %}
+                <span class="{% if slip > 0 %}red{% else %}green{% endif %}" style="font-size:11px">
+                  {% if slip > 0 %}+{% endif %}${{ "%.2f"|format(slip) }}
+                </span>
+              {% else %}
+                <span class="dim">—</span>
+              {% endif %}
+            </td>
+            <td class="num" style="font-family:var(--font-mono)">{{ t.shares or "—" }}</td>
+            <td>
+              {% if t.confirmed == true %}
+                <span class="tag tag-trade">YES</span>
+              {% elif t.confirmed == false %}
+                <span class="tag tag-stop">NO</span>
+              {% else %}
+                <span class="tag tag-skip">timeout</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      {% else %}
+      <div class="empty">
+        <span class="empty-icon">◈</span>
+        <span class="empty-label">No closed trades today</span>
+      </div>
+      {% endif %}
+    </div>
+
+  </div><!-- /ck-main -->
+
+  <!-- Right column: activity timeline -->
+  <div class="ck-sidebar">
+    <div class="card" style="height:100%">
+      <h2>
+        Activity Feed
+        {% if signal_log %}
+          <span class="h2-count">{{ signal_log|length }} events</span>
+        {% endif %}
+      </h2>
+      {% if signal_log %}
+      <div class="ck-feed">
+        {% for e in signal_log %}
+        <div class="ck-feed-item">
+          <div class="ck-feed-dot
+            {% if e.event_type in ('CONFIRMED','T1_HIT','T2_HIT') %}dot-green
+            {% elif e.event_type in ('BREAKOUT',) %}dot-blue
+            {% elif e.event_type in ('REJECTED','STOP_HIT','SMS_FAILED') %}dot-red
+            {% elif e.event_type in ('TIMEOUT','NO_TRADE_RULE') %}dot-muted
+            {% elif e.event_type in ('FORCE_EXIT',) %}dot-amber
+            {% else %}dot-muted{% endif %}
+          "></div>
+          <div class="ck-feed-content">
+            <div class="ck-feed-top">
+              <span class="sym" style="font-size:11.5px">{{ e.symbol }}</span>
+              <span class="tag
+                {% if e.event_type in ('CONFIRMED','T1_HIT','T2_HIT') %}tag-trade
+                {% elif e.event_type in ('BREAKOUT',) %}tag-open
+                {% elif e.event_type in ('REJECTED','STOP_HIT','SMS_FAILED') %}tag-stop
+                {% elif e.event_type in ('TIMEOUT','NO_TRADE_RULE') %}tag-skip
+                {% elif e.event_type in ('FORCE_EXIT',) %}tag-watch
+                {% else %}tag-skip{% endif %}
+              ">{{ e.event_type }}</span>
+              <span class="ck-feed-time">{{ e.time_str or "—" }}</span>
+            </div>
+            {% if e.details %}
+            <div class="ck-feed-detail">{{ e.details }}</div>
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty">
+        <span class="empty-icon">◈</span>
+        <span class="empty-label">No activity today</span>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+</div><!-- /ck-layout -->
+
+<!-- ── Confirmation overlay styles ───────────────────────────────────────── -->
+<style>
+  .ck-session-strip {
+    display: flex;
+    align-items: center;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  .ck-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 8px 18px;
+    gap: 2px;
+  }
+
+  .ck-stat-label {
+    font-size: 8.5px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+  }
+
+  .ck-stat-val {
+    font-family: var(--font-mono);
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-strong);
+    letter-spacing: -0.3px;
+    line-height: 1.1;
+  }
+
+  .ck-stat-sep {
+    width: 1px;
+    height: 30px;
+    background: var(--border);
+    flex-shrink: 0;
+  }
+
+  /* Two-column layout */
+  .ck-layout {
+    display: grid;
+    grid-template-columns: 1fr 300px;
+    gap: 10px;
+    align-items: start;
+  }
+
+  @media (max-width: 960px) {
+    .ck-layout { grid-template-columns: 1fr; }
+  }
+
+  /* Activity timeline feed */
+  .ck-feed {
+    padding: 8px 14px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    max-height: 560px;
+    overflow-y: auto;
+  }
+
+  .ck-feed-item {
+    display: flex;
+    gap: 10px;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--border);
+    position: relative;
+  }
+
+  .ck-feed-item:last-child { border-bottom: none; }
+
+  .ck-feed-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    margin-top: 4px;
+  }
+
+  .dot-green { background: var(--green); }
+  .dot-red   { background: var(--red); }
+  .dot-blue  { background: var(--blue); }
+  .dot-amber { background: var(--amber); }
+  .dot-muted { background: var(--muted); }
+
+  .ck-feed-content { flex: 1; min-width: 0; }
+
+  .ck-feed-top {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .ck-feed-time {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    color: var(--muted);
+  }
+
+  .ck-feed-detail {
+    font-size: 10.5px;
+    color: var(--subtext);
+    margin-top: 3px;
+    line-height: 1.4;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+</style>
+{% endblock %}

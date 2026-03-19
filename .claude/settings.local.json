@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m pip install twilio==9.4.6)",
+      "Bash(pip install:*)",
+      "Bash(python -c \"import yfinance as yf; t = yf.Ticker\\(''^VIX''\\); print\\(t.fast_info[''lastPrice'']\\)\")",
+      "Bash(pip show:*)",
+      "Bash(python -c \"import yfinance as yf; print\\(yf.Ticker\\(''^VIX''\\).fast_info[''lastPrice'']\\)\")",
+      "Bash(pip --version)",
+      "Bash(python -c \":*)",
+      "Bash(python -m db.schema)"
+    ]
+  }
+}

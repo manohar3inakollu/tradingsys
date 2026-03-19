@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <script>
+    (function(){
+      var s = localStorage.getItem('theme');
+      var sys = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', s || sys);
+    })();
+  </script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Login — TradeSys</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23131722'/%3E%3Cline x1='10' y1='5' x2='10' y2='9' stroke='%23ef5350' stroke-width='1.5'/%3E%3Crect x='7' y='9' width='6' height='9' rx='1' fill='%23ef5350'/%3E%3Cline x1='10' y1='18' x2='10' y2='22' stroke='%23ef5350' stroke-width='1.5'/%3E%3Cline x1='22' y1='6' x2='22' y2='11' stroke='%2326a69a' stroke-width='1.5'/%3E%3Crect x='19' y='11' width='6' height='10' rx='1' fill='%2326a69a'/%3E%3Cline x1='22' y1='21' x2='22' y2='27' stroke='%2326a69a' stroke-width='1.5'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root, [data-theme="dark"] {
+      --bg-body:     #131722;
+      --bg-card:     #1e222d;
+      --border:      #2a2e39;
+      --border-med:  #363a45;
+      --text:        #b2b5be;
+      --text-strong: #d1d4dc;
+      --subtext:     #787b86;
+      --muted:       #4c515b;
+      --green:       #26a69a;
+      --red:         #ef5350;
+      --blue:        #2962ff;
+      --blue-bg:     rgba(41,98,255,0.1);
+      --red-bg:      rgba(239,83,80,0.1);
+      --font-ui:     'Inter', system-ui, sans-serif;
+      --font-mono:   'JetBrains Mono', 'Fira Mono', monospace;
+    }
+    [data-theme="light"] {
+      --bg-body:     #f0f3fa;
+      --bg-card:     #ffffff;
+      --border:      #e0e3eb;
+      --border-med:  #c9cbd4;
+      --text:        #4c525e;
+      --text-strong: #131722;
+      --subtext:     #787b86;
+      --muted:       #b2b5be;
+      --green:       #089981;
+      --red:         #f23645;
+      --blue:        #2962ff;
+      --blue-bg:     rgba(41,98,255,0.08);
+      --red-bg:      rgba(242,54,69,0.08);
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg-body);
+      color: var(--text);
+      font-family: var(--font-ui);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      -webkit-font-smoothing: antialiased;
+    }
+    .login-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-top: 3px solid var(--blue);
+      border-radius: 8px;
+      padding: 36px 32px 32px;
+      width: 340px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    }
+    .login-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 28px;
+    }
+    .login-brand-mark {
+      width: 36px; height: 36px;
+      background: linear-gradient(135deg, var(--blue) 0%, #1a4fd6 100%);
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; color: #fff; font-weight: 700;
+      font-family: var(--font-mono);
+      box-shadow: 0 2px 8px rgba(41,98,255,0.4);
+    }
+    .login-brand-text {
+      font-size: 16px; font-weight: 700;
+      color: var(--text-strong);
+      letter-spacing: 0.5px;
+    }
+    .login-brand-sub {
+      font-size: 10px; color: var(--muted);
+      letter-spacing: 0.3px; margin-top: 1px;
+    }
+    .field {
+      margin-bottom: 16px;
+    }
+    .field label {
+      display: block;
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+    .field input {
+      width: 100%;
+      padding: 10px 12px;
+      font-size: 13px;
+      font-family: var(--font-ui);
+      background: var(--bg-body);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text-strong);
+      outline: none;
+      transition: border-color 0.12s;
+    }
+    .field input:focus {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 2px var(--blue-bg);
+    }
+    .field input::placeholder { color: var(--muted); }
+    .login-btn {
+      width: 100%;
+      padding: 11px;
+      font-size: 13px;
+      font-weight: 700;
+      font-family: var(--font-ui);
+      background: var(--blue);
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      letter-spacing: 0.3px;
+      transition: opacity 0.12s;
+      margin-top: 4px;
+    }
+    .login-btn:hover { opacity: 0.88; }
+    .login-error {
+      background: var(--red-bg);
+      color: var(--red);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 8px 12px;
+      border-radius: 4px;
+      margin-bottom: 16px;
+      border: 1px solid rgba(239,83,80,0.25);
+    }
+    .login-footer {
+      margin-top: 20px;
+      text-align: center;
+      font-size: 10px;
+      color: var(--muted);
+      letter-spacing: 0.3px;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-card">
+    <div class="login-brand">
+      <div class="login-brand-mark">TS</div>
+      <div>
+        <div class="login-brand-text">TradeSys</div>
+        <div class="login-brand-sub">Execution Platform</div>
+      </div>
+    </div>
+    {% if error %}
+    <div class="login-error">{{ error }}</div>
+    {% endif %}
+    <form method="POST">
+      <div class="field">
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username" placeholder="Enter username" autocomplete="username" autofocus required>
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" placeholder="Enter password" autocomplete="current-password" required>
+      </div>
+      <button type="submit" class="login-btn">Sign In</button>
+    </form>
+    <div class="login-footer">Session-based authentication</div>
+  </div>
+</body>
+</html>

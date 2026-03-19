@@ -1,0 +1,390 @@
+{% extends "base.html" %}
+{% block title %}Reports — {{ today }}{% endblock %}
+{% block ts %}{{ now }}{% endblock %}
+
+{% block content %}
+<h1>Reports &amp; Export</h1>
+
+<!-- ── Export action cards ────────────────────────────────────────────────── -->
+<div class="rp-export-row">
+  <a href="/export/trades.csv" class="rp-export-card">
+    <div class="rp-export-icon">↓</div>
+    <div class="rp-export-body">
+      <div class="rp-export-title">Trades CSV</div>
+      <div class="rp-export-desc">All closed trades · entry, exit, P&amp;L, R-multiple, scores</div>
+    </div>
+    <div class="rp-export-meta">as of {{ today_iso }}</div>
+  </a>
+  <a href="/export/sessions.csv" class="rp-export-card rp-export-card-secondary">
+    <div class="rp-export-icon">↓</div>
+    <div class="rp-export-body">
+      <div class="rp-export-title">Sessions CSV</div>
+      <div class="rp-export-desc">Daily session history · P&amp;L, trades count, halt status</div>
+    </div>
+    <div class="rp-export-meta">as of {{ today_iso }}</div>
+  </a>
+</div>
+
+<!-- ── Two-column: session timeline + trade log ───────────────────────────── -->
+<div class="rp-layout">
+
+  <!-- Left: session timeline -->
+  <div>
+    <div class="card">
+      <h2>
+        Session History
+        {% if sessions %}
+          <span class="h2-count">{{ sessions|length }} days</span>
+        {% endif %}
+      </h2>
+      {% if sessions %}
+      <div class="rp-timeline">
+        {% for s in sessions %}
+        <div class="rp-session {% if s.session_halted %}rp-session-halted{% elif (s.total_pnl or 0) > 0 %}rp-session-win{% elif (s.total_pnl or 0) < 0 %}rp-session-loss{% else %}rp-session-flat{% endif %}">
+          <div class="rp-session-dot"></div>
+          <div class="rp-session-content">
+            <div class="rp-session-top">
+              <span class="rp-session-date">
+                {{ s.session_date.strftime('%b %d, %Y') if s.session_date else '—' }}
+              </span>
+              <span class="rp-session-pnl {% if (s.total_pnl or 0) > 0 %}green{% elif (s.total_pnl or 0) < 0 %}red{% endif %}">
+                {% if (s.total_pnl or 0) > 0 %}+{% endif %}${{ "%.2f"|format(s.total_pnl or 0) }}
+              </span>
+            </div>
+            <div class="rp-session-meta">
+              <span class="dim">{{ s.trades_count }} trade{{ 's' if s.trades_count != 1 }}</span>
+              <span class="dim">·</span>
+              <span class="dim">${{ "%.0f"|format(s.risk_budget or 0) }} risk</span>
+              {% if s.session_halted %}
+              <span class="dim">·</span>
+              <span class="tag tag-stop" style="font-size:8.5px">HALTED</span>
+              {% if s.halt_reason %}
+              <span class="dim" style="font-size:10px">{{ s.halt_reason }}</span>
+              {% endif %}
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty">
+        <span class="empty-icon">◈</span>
+        <span class="empty-label">No session history yet</span>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Right: trade log -->
+  <div>
+    <div class="card">
+      <h2>
+        Trade Log
+        {% if trades %}
+          <span class="h2-count">{{ trades|length }} trades</span>
+        {% endif %}
+      </h2>
+      {% if trades %}
+      <div class="card-table">
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Symbol</th>
+            <th class="num">Entry</th>
+            <th class="num">Exit</th>
+            <th>Reason</th>
+            <th class="num">P&amp;L</th>
+            <th class="num">R</th>
+            <th class="num">Score</th>
+            <th>Catalyst</th>
+            <th>Conf.</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in trades %}
+          <tr>
+            <td class="dim" style="font-family:var(--font-mono);font-size:10.5px;white-space:nowrap">
+              {{ t.trade_date.strftime('%m/%d') if t.trade_date else '—' }}
+            </td>
+            <td><span class="sym" style="font-size:12px">{{ t.symbol }}</span></td>
+            <td class="num" style="font-family:var(--font-mono)">${{ "%.2f"|format(t.filled_entry or t.entry_price or 0) }}</td>
+            <td class="num" style="font-family:var(--font-mono)">${{ "%.2f"|format(t.exit_price or 0) }}</td>
+            <td>
+              {% if t.exit_reason %}
+                <span class="tag tag-{{ t.exit_reason|lower }}">{{ t.exit_reason }}</span>
+              {% else %}<span class="dim">—</span>{% endif %}
+            </td>
+            <td class="num {% if (t.pnl or 0) > 0 %}green{% elif (t.pnl or 0) < 0 %}red{% endif %}"
+                style="font-family:var(--font-mono)">
+              ${{ "%.2f"|format(t.pnl or 0) }}
+            </td>
+            <td class="num {% if (t.r_multiple or 0) > 0 %}green{% elif (t.r_multiple or 0) < 0 %}red{% endif %}"
+                style="font-family:var(--font-mono)">
+              {{ "%.2f"|format(t.r_multiple or 0) }}R
+            </td>
+            <td class="num dim" style="font-family:var(--font-mono)">
+              {{ "%.0f"|format(t.score_final) if t.score_final else "—" }}
+            </td>
+            <td class="dim" style="font-size:10.5px">{{ t.catalyst_type or "—" }}</td>
+            <td>
+              {% if t.confirmed == true %}
+                <span class="tag tag-trade">YES</span>
+              {% elif t.confirmed == false %}
+                <span class="tag tag-stop">NO</span>
+              {% else %}
+                <span class="tag tag-skip">—</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      {% else %}
+      <div class="empty">
+        <span class="empty-icon">◈</span>
+        <span class="empty-label">No closed trades yet</span>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+
+<style>
+  /* ── Export cards ─────────────────────────────────────────────────── */
+  .rp-export-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  @media (max-width: 600px) { .rp-export-row { grid-template-columns: 1fr; } }
+
+  .rp-export-card {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 18px;
+    background: var(--blue);
+    border-radius: var(--radius-lg);
+    text-decoration: none;
+    color: #fff;
+    transition: opacity 0.12s, transform 0.1s;
+  }
+
+  .rp-export-card:hover { opacity: 0.88; }
+  .rp-export-card:active { transform: scale(0.99); }
+
+  .rp-export-card-secondary {
+    background: var(--bg-card);
+    border: 1px solid var(--border-med);
+    color: var(--text);
+  }
+
+  .rp-export-card-secondary:hover {
+    border-color: var(--blue);
+    color: var(--blue);
+    opacity: 1;
+  }
+
+  .rp-export-icon {
+    font-size: 22px;
+    font-weight: 700;
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius);
+    background: rgba(255,255,255,0.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+  }
+
+  .rp-export-card-secondary .rp-export-icon {
+    background: var(--blue-bg);
+    color: var(--blue);
+  }
+
+  .rp-export-body { flex: 1; }
+
+  .rp-export-title {
+    font-size: 13px;
+    font-weight: 700;
+    margin-bottom: 2px;
+  }
+
+  .rp-export-desc {
+    font-size: 10.5px;
+    opacity: 0.75;
+  }
+
+  .rp-export-card-secondary .rp-export-desc { color: var(--subtext); opacity: 1; }
+
+  .rp-export-meta {
+    font-size: 9.5px;
+    font-family: var(--font-mono);
+    opacity: 0.6;
+    white-space: nowrap;
+  }
+
+  /* ── Two-column layout ────────────────────────────────────────────── */
+  .rp-layout {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 10px;
+    align-items: start;
+  }
+
+  @media (max-width: 860px) { .rp-layout { grid-template-columns: 1fr; } }
+
+  /* ── Session timeline ─────────────────────────────────────────────── */
+  .rp-timeline {
+    display: flex;
+    flex-direction: column;
+    padding: 8px 14px 12px;
+    gap: 0;
+    max-height: 600px;
+    overflow-y: auto;
+  }
+
+  .rp-session {
+    display: flex;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+    position: relative;
+  }
+
+  .rp-session:last-child { border-bottom: none; }
+
+  .rp-session-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    margin-top: 4px;
+    background: var(--border-med);
+  }
+
+  .rp-session-win  .rp-session-dot { background: var(--green); }
+  .rp-session-loss .rp-session-dot { background: var(--red); }
+  .rp-session-halted .rp-session-dot { background: var(--amber); }
+
+  .rp-session-content { flex: 1; }
+
+  .rp-session-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 3px;
+  }
+
+  .rp-session-date {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-strong);
+    font-family: var(--font-mono);
+  }
+
+  .rp-session-pnl {
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    font-weight: 700;
+  }
+
+  .rp-session-meta {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10.5px;
+    flex-wrap: wrap;
+  }
+</style>
+
+<!-- ── Catalyst / News Log ────────────────────────────────────────────────── -->
+<div class="card">
+  <h2>
+    Catalyst &amp; News Log
+    {% if catalyst_log %}
+      <span class="h2-count">{{ catalyst_log|length }} signals · last 30 days</span>
+    {% endif %}
+  </h2>
+  {% if catalyst_log %}
+  <div class="card-table">
+  <table>
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Symbol</th>
+        <th>Headline</th>
+        <th>Catalyst</th>
+        <th>Sentiment</th>
+        <th>Decision</th>
+        <th class="num">R</th>
+        <th class="num">P&amp;L</th>
+        <th>Exit</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in catalyst_log %}
+      <tr>
+        <td class="dim" style="font-family:var(--font-mono);font-size:11px;white-space:nowrap">
+          {{ c.scan_date.strftime('%m/%d') if c.scan_date else '—' }}
+        </td>
+        <td><span class="sym" style="font-size:13px">{{ c.symbol }}</span></td>
+        <td style="max-width:320px;font-size:11.5px;color:var(--subtext)">
+          <span title="{{ c.headline }}" style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:320px">
+            {{ c.headline or "—" }}
+          </span>
+        </td>
+        <td style="font-size:11px;white-space:nowrap">{{ c.catalyst_type or "—" }}</td>
+        <td>
+          {% if c.sentiment == 'bullish' %}
+            <span class="tag tag-trade">{{ c.sentiment }}</span>
+          {% elif c.sentiment == 'bearish' %}
+            <span class="tag tag-stop">{{ c.sentiment }}</span>
+          {% else %}
+            <span class="dim" style="font-size:11px">{{ c.sentiment or "—" }}</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if c.decision %}
+            <span class="tag tag-{{ c.decision|lower }}">{{ c.decision }}</span>
+          {% else %}<span class="dim">—</span>{% endif %}
+        </td>
+        <td class="num {% if (c.r_multiple or 0) > 0 %}green{% elif (c.r_multiple or 0) < 0 %}red{% endif %}"
+            style="font-family:var(--font-mono)">
+          {% if c.r_multiple %}{{ "%.2f"|format(c.r_multiple) }}R{% else %}<span class="dim">—</span>{% endif %}
+        </td>
+        <td class="num {% if (c.pnl or 0) > 0 %}green{% elif (c.pnl or 0) < 0 %}red{% endif %}"
+            style="font-family:var(--font-mono)">
+          {% if c.pnl %}${{ "%.2f"|format(c.pnl) }}{% else %}<span class="dim">—</span>{% endif %}
+        </td>
+        <td>
+          {% if c.exit_reason %}
+            <span class="tag tag-{{ c.exit_reason|lower }}" style="font-size:9.5px">{{ c.exit_reason }}</span>
+          {% elif c.trade_status %}
+            <span class="dim" style="font-size:11px">{{ c.trade_status }}</span>
+          {% else %}
+            <span class="dim">not traded</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <div class="empty">
+    <span class="empty-icon">◈</span>
+    <span class="empty-label">No catalyst data in the last 30 days</span>
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}

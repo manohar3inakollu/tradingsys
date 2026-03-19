@@ -1,0 +1,1055 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <script>
+    (function(){
+      var s = localStorage.getItem('theme');
+      var sys = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', s || sys);
+    })();
+  </script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  {% if refresh %}<meta http-equiv="refresh" content="{{ refresh }}">{% endif %}
+  <title>{% block title %}Trading System{% endblock %}</title>
+  <!-- Favicon: candlestick chart SVG -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23131722'/%3E%3C!-- Bearish candle --%3E%3Cline x1='10' y1='5' x2='10' y2='9' stroke='%23ef5350' stroke-width='1.5'/%3E%3Crect x='7' y='9' width='6' height='9' rx='1' fill='%23ef5350'/%3E%3Cline x1='10' y1='18' x2='10' y2='22' stroke='%23ef5350' stroke-width='1.5'/%3E%3C!-- Bullish candle --%3E%3Cline x1='22' y1='6' x2='22' y2='11' stroke='%2326a69a' stroke-width='1.5'/%3E%3Crect x='19' y='11' width='6' height='10' rx='1' fill='%2326a69a'/%3E%3Cline x1='22' y1='21' x2='22' y2='27' stroke='%2326a69a' stroke-width='1.5'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    /* ── Design tokens — dark (TradingView-inspired) ───────────────────────── */
+    :root, [data-theme="dark"] {
+      --bg-body:     #131722;
+      --bg-card:     #1e222d;
+      --bg-nav:      #1e222d;
+      --bg-thead:    #1a1e2e;
+      --bg-row-alt:  rgba(255,255,255,0.018);
+      --bg-hover:    rgba(41,98,255,0.08);
+      --border:      #2a2e39;
+      --border-med:  #363a45;
+      --text:        #b2b5be;
+      --text-strong: #d1d4dc;
+      --subtext:     #787b86;
+      --muted:       #4c515b;
+      --green:       #26a69a;
+      --red:         #ef5350;
+      --amber:       #ff9800;
+      --blue:        #2962ff;
+      --green-bg:    rgba(38,166,154,0.1);
+      --red-bg:      rgba(239,83,80,0.1);
+      --amber-bg:    rgba(255,152,0,0.1);
+      --blue-bg:     rgba(41,98,255,0.1);
+      --muted-bg:    rgba(76,81,91,0.22);
+      --shadow-sm:   0 1px 3px rgba(0,0,0,0.6);
+      --shadow:      0 2px 8px rgba(0,0,0,0.5);
+      --shadow-lg:   0 8px 28px rgba(0,0,0,0.5);
+      --radius-sm:   3px;
+      --radius:      4px;
+      --radius-lg:   6px;
+      --font-ui:     'Inter', system-ui, sans-serif;
+      --font-mono:   'JetBrains Mono', 'Fira Mono', monospace;
+      --nav-height:  54px;
+    }
+
+    /* ── Design tokens — light (TradingView light) ──────────────────────────── */
+    [data-theme="light"] {
+      --bg-body:     #f0f3fa;
+      --bg-card:     #ffffff;
+      --bg-nav:      #ffffff;
+      --bg-thead:    #f0f3fa;
+      --bg-row-alt:  rgba(0,0,0,0.014);
+      --bg-hover:    rgba(41,98,255,0.05);
+      --border:      #e0e3eb;
+      --border-med:  #c9cbd4;
+      --text:        #4c525e;
+      --text-strong: #131722;
+      --subtext:     #787b86;
+      --muted:       #b2b5be;
+      --green:       #089981;
+      --red:         #f23645;
+      --amber:       #fb8c00;
+      --blue:        #2962ff;
+      --green-bg:    rgba(8,153,129,0.08);
+      --red-bg:      rgba(242,54,69,0.08);
+      --amber-bg:    rgba(251,140,0,0.08);
+      --blue-bg:     rgba(41,98,255,0.08);
+      --muted-bg:    rgba(178,181,190,0.14);
+      --shadow-sm:   0 1px 3px rgba(19,23,34,0.06);
+      --shadow:      0 2px 8px rgba(19,23,34,0.07);
+      --shadow-lg:   0 8px 28px rgba(19,23,34,0.09);
+    }
+
+    /* ── Reset ─────────────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* ── Transitions (enabled after paint to avoid FOUC) ───────────────────── */
+    .transitions-ready * {
+      transition: background-color 0.15s ease, border-color 0.15s ease,
+                  color 0.15s ease;
+    }
+
+    /* ── Scrollbar ─────────────────────────────────────────────────────────── */
+    html { scrollbar-color: var(--border-med) transparent; scrollbar-width: thin; }
+    ::-webkit-scrollbar              { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track        { background: transparent; }
+    ::-webkit-scrollbar-thumb        { background: var(--border-med); border-radius: 99px; }
+    ::-webkit-scrollbar-thumb:hover  { background: var(--subtext); }
+
+    /* ── Base ──────────────────────────────────────────────────────────────── */
+    html { height: 100%; }
+
+    body {
+      background: var(--bg-body);
+      color: var(--text);
+      font-family: var(--font-ui);
+      font-size: 14px;
+      line-height: 1.5;
+      min-height: 100%;
+      display: flex;
+      flex-direction: column;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* ── Navigation ────────────────────────────────────────────────────────── */
+    nav {
+      background: var(--bg-nav);
+      border-bottom: 1px solid var(--border);
+      border-top: 2px solid var(--blue);
+      height: var(--nav-height);
+      padding: 0 24px;
+      display: flex;
+      align-items: stretch;
+      position: sticky;
+      top: 0;
+      z-index: 200;
+      box-shadow: 0 1px 0 var(--border), 0 4px 16px rgba(0,0,0,0.3);
+    }
+
+    .nav-brand {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      padding-right: 22px;
+      margin-right: 6px;
+      border-right: 1px solid var(--border);
+      text-decoration: none;
+      flex-shrink: 0;
+    }
+
+    .nav-brand-mark {
+      width: 30px;
+      height: 30px;
+      background: linear-gradient(135deg, var(--blue) 0%, #1a4fd6 100%);
+      border-radius: var(--radius);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      color: #fff;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      letter-spacing: -0.5px;
+      flex-shrink: 0;
+      box-shadow: 0 2px 8px rgba(41,98,255,0.4);
+    }
+
+    .nav-brand-name {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-strong);
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .nav-brand-tag {
+      font-size: 9.5px;
+      font-weight: 500;
+      color: var(--muted);
+      letter-spacing: 0.3px;
+      margin-top: 1px;
+    }
+
+    /* Nav links */
+    nav a.nav-link {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--subtext);
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 500;
+      padding: 0 14px;
+      border-bottom: 2px solid transparent;
+      border-top: 2px solid transparent;
+      position: relative;
+      transition: color 0.12s, background 0.12s;
+      white-space: nowrap;
+      letter-spacing: 0.1px;
+    }
+
+    nav a.nav-link svg { opacity: 0.6; flex-shrink: 0; transition: opacity 0.12s; }
+
+    nav a.nav-link:hover {
+      color: var(--text);
+      background: var(--bg-hover);
+    }
+
+    nav a.nav-link:hover svg { opacity: 0.9; }
+
+    nav a.nav-link.active {
+      color: var(--text-strong);
+      font-weight: 600;
+      border-bottom-color: var(--blue);
+      background: rgba(41,98,255,0.06);
+    }
+
+    nav a.nav-link.active svg { opacity: 1; color: var(--blue); }
+
+    .nav-sep {
+      width: 1px;
+      background: var(--border);
+      margin: 12px 4px;
+      flex-shrink: 0;
+    }
+
+    .nav-right {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding-left: 16px;
+      border-left: 1px solid var(--border);
+    }
+
+    .nav-ts {
+      color: var(--subtext);
+      font-size: 11.5px;
+      font-family: var(--font-mono);
+      white-space: nowrap;
+      letter-spacing: 0.2px;
+    }
+
+    .theme-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      background: none;
+      border: 1px solid var(--border-med);
+      border-radius: var(--radius);
+      cursor: pointer;
+      color: var(--subtext);
+      font-size: 14px;
+      line-height: 1;
+      flex-shrink: 0;
+      transition: color 0.12s, border-color 0.12s, background 0.12s;
+    }
+
+    .theme-toggle:hover {
+      color: var(--text-strong);
+      border-color: var(--blue);
+      background: var(--blue-bg);
+    }
+
+    .logout-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border: 1px solid var(--border-med);
+      border-radius: var(--radius);
+      color: var(--subtext);
+      text-decoration: none;
+      transition: color 0.12s, border-color 0.12s, background 0.12s;
+    }
+
+    .logout-btn:hover {
+      color: var(--red);
+      border-color: var(--red);
+      background: var(--red-bg);
+    }
+
+    /* ── Notification bell ──────────────────────────────────────────────────── */
+    .notif-wrap {
+      position: relative;
+      flex-shrink: 0;
+    }
+
+    .notif-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      background: none;
+      border: 1px solid var(--border-med);
+      border-radius: var(--radius);
+      cursor: pointer;
+      color: var(--subtext);
+      position: relative;
+      transition: color 0.12s, border-color 0.12s, background 0.12s;
+    }
+
+    .notif-btn:hover {
+      color: var(--text-strong);
+      border-color: var(--amber);
+      background: var(--amber-bg);
+    }
+
+    .notif-btn.notif-active {
+      color: var(--amber);
+      border-color: var(--amber);
+      background: var(--amber-bg);
+    }
+
+    .notif-badge {
+      position: absolute;
+      top: -5px;
+      right: -5px;
+      min-width: 16px;
+      height: 16px;
+      border-radius: 8px;
+      background: var(--red);
+      color: #fff;
+      font-size: 9px;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 3px;
+      pointer-events: none;
+      border: 1.5px solid var(--bg-nav);
+    }
+
+    .notif-dropdown {
+      position: absolute;
+      top: calc(100% + 10px);
+      right: 0;
+      width: 390px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-med);
+      border-top: 2px solid var(--amber);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-lg);
+      z-index: 999;
+      overflow: hidden;
+    }
+
+    .notif-hd {
+      background: var(--amber-bg);
+      border-bottom: 1px solid rgba(255,152,0,0.2);
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--amber);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+    }
+
+    .notif-hd-count {
+      margin-left: auto;
+      font-family: var(--font-mono);
+      font-weight: 500;
+      font-size: 10px;
+      color: var(--subtext);
+      text-transform: none;
+      letter-spacing: 0;
+    }
+
+    .notif-list {
+      max-height: 440px;
+      overflow-y: auto;
+    }
+
+    .notif-empty {
+      padding: 28px 16px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    /* ── Notification trade card ────────────────────────────────────────────── */
+    .nc-card {
+      border-bottom: 1px solid var(--border);
+      padding: 12px 14px;
+      animation: ncIn 0.18s ease;
+    }
+
+    .nc-card:last-child { border-bottom: none; }
+
+    @keyframes ncIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .nc-hd {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .nc-symbol {
+      font-family: var(--font-mono);
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text-strong);
+      letter-spacing: -0.3px;
+    }
+
+    .nc-label {
+      font-size: 9.5px;
+      font-weight: 600;
+      color: var(--amber);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .nc-countdown {
+      margin-left: auto;
+      font-family: var(--font-mono);
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--amber);
+    }
+
+    .nc-countdown.urgent { color: var(--red); animation: pulse 0.6s ease infinite; }
+
+    .nc-plan {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+
+    .nc-field {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .nc-field span {
+      font-size: 8.5px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .nc-field strong {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-strong);
+    }
+
+    .nc-actions { display: flex; gap: 8px; }
+
+    /* ── Confirm buttons (shared) ───────────────────────────────────────────── */
+    .btn-confirm {
+      padding: 8px 0;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      letter-spacing: 0.3px;
+      transition: opacity 0.12s, transform 0.1s;
+      flex: 1;
+    }
+
+    .btn-confirm:active { transform: scale(0.97); }
+    .btn-confirm:disabled { opacity: 0.35; cursor: not-allowed; }
+
+    .btn-yes { background: var(--green); color: #fff; }
+    .btn-yes:hover:not(:disabled) { opacity: 0.88; }
+
+    .btn-no { background: var(--red-bg); color: var(--red); border: 1px solid rgba(239,83,80,0.35); }
+    .btn-no:hover:not(:disabled) { background: var(--red); color: #fff; }
+
+    /* ── Layout ────────────────────────────────────────────────────────────── */
+    .container {
+      flex: 1;
+      width: 100%;
+      max-width: 1480px;
+      margin: 0 auto;
+      padding: 20px 24px 52px;
+    }
+
+    /* ── Page heading ──────────────────────────────────────────────────────── */
+    h1 {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text-strong);
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+      letter-spacing: -0.3px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    /* Right-side slot inside any h1 */
+    h1 .h1-right {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* ── Stat row ──────────────────────────────────────────────────────────── */
+    .stat-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(138px, 1fr));
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .stat {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 14px;
+      position: relative;
+      border-left-width: 3px;
+    }
+
+    /* Left-border accent (replaces top stripe) */
+    .stat.accent-none   { border-left-color: var(--border); }
+    .stat.accent-green  { border-left-color: var(--green);  }
+    .stat.accent-red    { border-left-color: var(--red);    }
+    .stat.accent-amber  { border-left-color: var(--amber);  }
+    .stat.accent-blue   { border-left-color: var(--blue);   }
+
+    .stat .label {
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      margin-bottom: 7px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .stat .value {
+      font-size: 21px;
+      font-weight: 600;
+      font-family: var(--font-mono);
+      color: var(--text-strong);
+      line-height: 1.1;
+      letter-spacing: -0.5px;
+    }
+
+    .stat .value.green { color: var(--green); }
+    .stat .value.red   { color: var(--red); }
+    .stat .value.warn  { color: var(--amber); }
+    .stat .value.blue  { color: var(--blue); }
+
+    /* ── Cards ─────────────────────────────────────────────────────────────── */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      margin-bottom: 10px;
+      overflow: hidden;
+    }
+
+    h2 {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--subtext);
+      text-transform: uppercase;
+      letter-spacing: 0.7px;
+      padding: 11px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--bg-thead);
+    }
+
+    h2 .h2-count {
+      margin-left: auto;
+      font-size: 10px;
+      font-family: var(--font-mono);
+      color: var(--muted);
+      font-weight: 500;
+      letter-spacing: 0;
+    }
+
+    /* ── Tables ────────────────────────────────────────────────────────────── */
+    .card-table {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    table { width: 100%; border-collapse: collapse; }
+
+    thead { background: var(--bg-thead); }
+
+    th {
+      text-align: left;
+      padding: 8px 14px;
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      white-space: nowrap;
+      border-bottom: 1px solid var(--border);
+    }
+
+    td {
+      padding: 9px 14px;
+      font-size: 13px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+
+    tbody tr:nth-child(even) td { background: var(--bg-row-alt); }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:hover td { background: var(--bg-hover) !important; }
+
+    td.num, th.num { text-align: right; font-family: var(--font-mono); }
+    td.dim         { color: var(--subtext); }
+
+    /* ── Tags / badges ─────────────────────────────────────────────────────── */
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: var(--radius-sm);
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.4px;
+      white-space: nowrap;
+      line-height: 18px;
+      text-transform: uppercase;
+    }
+
+    .tag-trade   { background: var(--green-bg);  color: var(--green);   border: 1px solid rgba(38,166,154,0.25); }
+    .tag-watch   { background: var(--amber-bg);  color: var(--amber);   border: 1px solid rgba(255,152,0,0.25); }
+    .tag-skip    { background: var(--muted-bg);  color: var(--subtext); border: 1px solid transparent; }
+    .tag-open    { background: var(--blue-bg);   color: var(--blue);    border: 1px solid rgba(41,98,255,0.25); }
+    .tag-partial { background: var(--amber-bg);  color: var(--amber);   border: 1px solid rgba(255,152,0,0.25); }
+    .tag-closed  { background: var(--muted-bg);  color: var(--subtext); border: 1px solid transparent; }
+    .tag-stop    { background: var(--red-bg);    color: var(--red);     border: 1px solid rgba(239,83,80,0.25); }
+    .tag-t1      { background: var(--green-bg);  color: var(--green);   border: 1px solid rgba(38,166,154,0.25); }
+    .tag-t2      { background: var(--blue-bg);   color: var(--blue);    border: 1px solid rgba(41,98,255,0.25); }
+    .tag-pending { background: var(--blue-bg);   color: var(--blue);    border: 1px solid rgba(41,98,255,0.25); }
+
+    /* ── Utility ───────────────────────────────────────────────────────────── */
+    .green { color: var(--green)  !important; }
+    .red   { color: var(--red)    !important; }
+    .warn  { color: var(--amber)  !important; }
+    .blue  { color: var(--blue)   !important; }
+    .dim   { color: var(--subtext); }
+
+    .sym {
+      color: var(--text-strong);
+      font-weight: 700;
+      font-size: 14px;
+      font-family: var(--font-mono);
+      letter-spacing: -0.2px;
+    }
+
+    /* ── Empty state ───────────────────────────────────────────────────────── */
+    .empty {
+      padding: 40px 20px;
+      text-align: center;
+    }
+
+    .empty-icon {
+      font-size: 20px;
+      margin-bottom: 8px;
+      opacity: 0.2;
+      display: block;
+    }
+
+    .empty-label {
+      color: var(--muted);
+      font-size: 12.5px;
+      letter-spacing: 0.2px;
+    }
+
+    /* ── Live pulse dot ────────────────────────────────────────────────────── */
+    .live-dot {
+      display: inline-block;
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--green);
+      flex-shrink: 0;
+      animation: pulse 2.4s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.2; }
+    }
+
+    /* ── Bar chart (progress/analytics) ───────────────────────────────────── */
+    .bar-wrap  { display: flex; align-items: center; gap: 8px; }
+
+    .bar-bg {
+      flex: 1;
+      background: var(--border);
+      border-radius: 2px;
+      height: 4px;
+      overflow: hidden;
+      min-width: 60px;
+    }
+
+    .bar-fill {
+      height: 4px;
+      border-radius: 2px;
+      background: var(--green);
+    }
+
+    .bar-label {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--subtext);
+      width: 40px;
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    /* ── Section label ─────────────────────────────────────────────────────── */
+    .section-label {
+      font-size: 9px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.7px;
+      margin: 16px 0 8px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .section-label::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    /* ── Halted banner ─────────────────────────────────────────────────────── */
+    .halted-banner {
+      background: var(--red-bg);
+      border: 1px solid rgba(229,83,75,0.3);
+      border-left: 3px solid var(--red);
+      border-radius: var(--radius);
+      padding: 10px 16px;
+      color: var(--red);
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.2px;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* ── Footer ────────────────────────────────────────────────────────────── */
+    footer {
+      padding: 18px 20px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 10px;
+      letter-spacing: 0.3px;
+    }
+
+    footer .footer-brand {
+      font-weight: 600;
+      color: var(--subtext);
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      font-size: 9.5px;
+    }
+
+    footer .footer-note { color: var(--muted); }
+
+    footer .sep { margin: 0 7px; opacity: 0.3; }
+  </style>
+</head>
+<body>
+<nav>
+  <a class="nav-brand" href="/dash">
+    <div class="nav-brand-mark">TS</div>
+    <div>
+      <div class="nav-brand-name">TradeSys</div>
+      <div class="nav-brand-tag">Execution Platform</div>
+    </div>
+  </a>
+  <a href="/dash" class="nav-link {% if request.path == '/dash' %}active{% endif %}">
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="1" y="1" width="6" height="6" rx="1.2"/><rect x="9" y="1" width="6" height="6" rx="1.2"/>
+      <rect x="1" y="9" width="6" height="6" rx="1.2"/><rect x="9" y="9" width="6" height="6" rx="1.2"/>
+    </svg>
+    Dashboard
+  </a>
+  <a href="/cockpit" class="nav-link {% if request.path == '/cockpit' %}active{% endif %}">
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+      <line x1="4" y1="2" x2="4" y2="4"/><rect x="2" y="4" width="4" height="5" rx="0.8"/>
+      <line x1="4" y1="9" x2="4" y2="14"/>
+      <line x1="12" y1="1" x2="12" y2="6"/><rect x="10" y="6" width="4" height="4" rx="0.8" fill="currentColor" stroke="none" opacity="0.7"/>
+      <line x1="12" y1="10" x2="12" y2="15"/>
+    </svg>
+    Cockpit
+  </a>
+  <a href="/analytics" class="nav-link {% if request.path == '/analytics' %}active{% endif %}">
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+      <rect x="1" y="9" width="3" height="6" rx="0.8" opacity="0.5"/><rect x="6" y="5" width="3" height="10" rx="0.8" opacity="0.75"/>
+      <rect x="11" y="2" width="3" height="13" rx="0.8"/>
+    </svg>
+    Analytics
+  </a>
+  <a href="/progress" class="nav-link {% if request.path == '/progress' %}active{% endif %}">
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="1,12 5,7 9,10 15,3"/><polyline points="11,3 15,3 15,7"/>
+    </svg>
+    Progress
+  </a>
+  <a href="/reports" class="nav-link {% if request.path == '/reports' %}active{% endif %}">
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 2h7l3 3v9H3V2z"/><polyline points="10,2 10,5 13,5"/>
+      <line x1="5" y1="8" x2="11" y2="8"/><line x1="5" y1="11" x2="9" y2="11"/>
+    </svg>
+    Reports
+  </a>
+  <div class="nav-right">
+    <span class="nav-ts">{% block ts %}{% endblock %}</span>
+    <div class="notif-wrap" id="notifWrap">
+      <button class="notif-btn" id="notifBtn" title="Trade signals" aria-label="Notifications">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M8 1.5a4.5 4.5 0 0 1 4.5 4.5c0 3 1 4 1 4H2.5s1-1 1-4A4.5 4.5 0 0 1 8 1.5z"/>
+          <line x1="6.5" y1="14" x2="9.5" y2="14"/>
+        </svg>
+        <span class="notif-badge" id="notifBadge" style="display:none">0</span>
+      </button>
+      <div class="notif-dropdown" id="notifDropdown" style="display:none">
+        <div class="notif-hd">
+          <span class="live-dot"></span>
+          Trade Signals
+          <span class="notif-hd-count" id="notifCount">0 pending</span>
+        </div>
+        <div class="notif-list" id="notifList">
+          <div class="notif-empty">No pending signals</div>
+        </div>
+      </div>
+    </div>
+    <button class="theme-toggle" id="themeToggle" title="Toggle theme" aria-label="Toggle theme"></button>
+    <a href="/logout" class="logout-btn" title="Sign out">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M6 2H3a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/>
+        <polyline points="10,4 14,8 10,12"/>
+        <line x1="14" y1="8" x2="6" y2="8"/>
+      </svg>
+    </a>
+  </div>
+</nav>
+<div class="container">
+  {% block content %}{% endblock %}
+</div>
+<footer>
+  <span class="footer-brand">TradeSys</span>
+  <span class="footer-note">
+    Market data via Alpaca &amp; Tradier
+    <span class="sep">·</span>
+    For informational use only
+    <span class="sep">·</span>
+    Not financial advice
+  </span>
+</footer>
+
+<script>
+  requestAnimationFrame(function() {
+    requestAnimationFrame(function() {
+      document.body.classList.add('transitions-ready');
+    });
+  });
+
+  var btn = document.getElementById('themeToggle');
+
+  function getTheme()  { return document.documentElement.getAttribute('data-theme') || 'dark'; }
+  function setIcon(t)  { btn.textContent = t === 'dark' ? '☀' : '☾'; }
+  function applyTheme(t) {
+    document.documentElement.setAttribute('data-theme', t);
+    localStorage.setItem('theme', t);
+    setIcon(t);
+  }
+
+  setIcon(getTheme());
+  btn.addEventListener('click', function() { applyTheme(getTheme() === 'dark' ? 'light' : 'dark'); });
+</script>
+
+<script>
+/* ── Notification bell polling ──────────────────────────────────────────── */
+(function() {
+  var badge    = document.getElementById('notifBadge');
+  var notifBtn = document.getElementById('notifBtn');
+  var dropdown = document.getElementById('notifDropdown');
+  var list     = document.getElementById('notifList');
+  var countEl  = document.getElementById('notifCount');
+
+  var open    = false;
+  var current = {};  // trade.id -> trade object
+  var timers  = {};  // trade.id -> countdown interval
+
+  function fmt(v) {
+    return (v === null || v === undefined) ? '—' : '$' + parseFloat(v).toFixed(2);
+  }
+
+  function renderCard(trade) {
+    return '<div class="nc-card" id="nc-' + trade.id + '">' +
+      '<div class="nc-hd">' +
+        '<span class="live-dot"></span>' +
+        '<span class="nc-symbol">' + trade.symbol + '</span>' +
+        '<span class="nc-label">Trade Signal</span>' +
+        '<span class="nc-countdown" id="nc-cd-' + trade.id + '">—</span>' +
+      '</div>' +
+      '<div class="nc-plan">' +
+        '<div class="nc-field"><span>Entry</span><strong class="green">' + fmt(trade.entry_price) + '</strong></div>' +
+        '<div class="nc-field"><span>Stop</span><strong class="red">'   + fmt(trade.stop_price)  + '</strong></div>' +
+        '<div class="nc-field"><span>T1</span><strong>'                 + fmt(trade.t1_price)    + '</strong></div>' +
+        '<div class="nc-field"><span>T2</span><strong>'                 + fmt(trade.t2_price)    + '</strong></div>' +
+        '<div class="nc-field"><span>Shares</span><strong>' + (trade.shares || '—') + '</strong></div>' +
+        '<div class="nc-field"><span>Risk</span><strong>'  + fmt(trade.risk_amount)  + '</strong></div>' +
+      '</div>' +
+      '<div class="nc-actions">' +
+        '<button class="btn-confirm btn-yes" id="nc-yes-' + trade.id + '" onclick="navConfirm(' + trade.id + ',true)">&#10003; YES</button>' +
+        '<button class="btn-confirm btn-no"  id="nc-no-'  + trade.id + '" onclick="navConfirm(' + trade.id + ',false)">&#10005; NO</button>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function startCountdown(tradeId, deadlineTs) {
+    if (timers[tradeId]) clearInterval(timers[tradeId]);
+    timers[tradeId] = setInterval(function() {
+      var remaining = Math.ceil(deadlineTs - (Date.now() / 1000));
+      var el = document.getElementById('nc-cd-' + tradeId);
+      if (el) {
+        el.textContent = remaining > 0 ? remaining + 's' : '0s';
+        if (remaining <= 10) el.classList.add('urgent');
+      }
+      if (remaining <= 0) {
+        clearInterval(timers[tradeId]);
+        delete timers[tradeId];
+        delete current[tradeId];
+        syncList(Object.values(current));
+      }
+    }, 500);
+  }
+
+  function syncList(trades) {
+    var count  = trades.length;
+    var newIds = trades.map(function(t) { return t.id; });
+
+    // Badge
+    if (count > 0) {
+      badge.textContent = count;
+      badge.style.display = 'flex';
+      notifBtn.classList.add('notif-active');
+    } else {
+      badge.style.display = 'none';
+      notifBtn.classList.remove('notif-active');
+    }
+    countEl.textContent = count + (count === 1 ? ' pending' : ' pending');
+
+    // Remove cards that are no longer pending
+    Object.keys(current).forEach(function(id) {
+      if (newIds.indexOf(parseInt(id)) === -1) {
+        var card = document.getElementById('nc-' + id);
+        if (card) card.remove();
+        if (timers[id]) { clearInterval(timers[id]); delete timers[id]; }
+        delete current[id];
+      }
+    });
+
+    // Add new cards
+    trades.forEach(function(trade) {
+      if (!current[trade.id]) {
+        current[trade.id] = trade;
+        var empty = list.querySelector('.notif-empty');
+        if (empty) empty.remove();
+        list.insertAdjacentHTML('beforeend', renderCard(trade));
+        startCountdown(trade.id, trade.deadline_ts);
+      }
+    });
+
+    // Restore empty state
+    if (count === 0 && list.children.length === 0) {
+      list.innerHTML = '<div class="notif-empty">No pending signals</div>';
+    }
+  }
+
+  window.navConfirm = function(tradeId, confirmed) {
+    var url  = confirmed ? '/api/confirm/' + tradeId : '/api/reject/' + tradeId;
+    var btnY = document.getElementById('nc-yes-' + tradeId);
+    var btnN = document.getElementById('nc-no-'  + tradeId);
+    if (btnY) btnY.disabled = true;
+    if (btnN) btnN.disabled = true;
+    fetch(url, { method: 'POST' })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.ok) {
+          var card = document.getElementById('nc-' + tradeId);
+          if (card) card.remove();
+          if (timers[tradeId]) { clearInterval(timers[tradeId]); delete timers[tradeId]; }
+          delete current[tradeId];
+          syncList(Object.values(current));
+        }
+      })
+      .catch(function() {
+        if (btnY) btnY.disabled = false;
+        if (btnN) btnN.disabled = false;
+      });
+  };
+
+  // Toggle dropdown
+  notifBtn.addEventListener('click', function(e) {
+    e.stopPropagation();
+    open = !open;
+    dropdown.style.display = open ? 'block' : 'none';
+  });
+
+  // Close on outside click
+  document.addEventListener('click', function(e) {
+    if (open && !document.getElementById('notifWrap').contains(e.target)) {
+      open = false;
+      dropdown.style.display = 'none';
+    }
+  });
+
+  // Poll /api/pending every 3 s
+  function poll() {
+    fetch('/api/pending')
+      .then(function(r) { return r.json(); })
+      .then(function(data) { syncList(data || []); })
+      .catch(function() {});
+  }
+
+  poll();
+  setInterval(poll, 3000);
+})();
+</script>
+</body>
+</html>

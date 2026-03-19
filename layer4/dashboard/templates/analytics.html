@@ -1,0 +1,629 @@
+{% extends "base.html" %}
+{% block title %}Analytics{% endblock %}
+{% block ts %}{{ now }}{% endblock %}
+
+{% block content %}
+<h1>Analytics</h1>
+
+<!-- ── Overall performance strip ─────────────────────────────────────────── -->
+<div class="an-strip card">
+  <div class="an-strip-item">
+    <span class="an-strip-label">Total Trades</span>
+    <span class="an-strip-val">{{ overall.total_trades or 0 }}</span>
+  </div>
+  <div class="an-strip-sep"></div>
+  <div class="an-strip-item">
+    <span class="an-strip-label">Win Rate</span>
+    <span class="an-strip-val {% if (overall.win_rate or 0) >= 50 %}green{% else %}red{% endif %}">
+      {{ overall.win_rate or "—" }}{% if overall.win_rate %}%{% endif %}
+    </span>
+  </div>
+  <div class="an-strip-sep"></div>
+  <div class="an-strip-item">
+    <span class="an-strip-label">Avg R-Multiple</span>
+    <span class="an-strip-val {% if (overall.avg_r or 0) > 0 %}green{% elif (overall.avg_r or 0) < 0 %}red{% endif %}">
+      {{ overall.avg_r or "—" }}{% if overall.avg_r %}R{% endif %}
+    </span>
+  </div>
+  <div class="an-strip-sep"></div>
+  <div class="an-strip-item">
+    <span class="an-strip-label">Total P&amp;L</span>
+    <span class="an-strip-val {% if (overall.total_pnl or 0) > 0 %}green{% elif (overall.total_pnl or 0) < 0 %}red{% endif %}">
+      ${{ "%.2f"|format(overall.total_pnl or 0) }}
+    </span>
+  </div>
+  <div class="an-strip-sep"></div>
+  <div class="an-strip-item">
+    <span class="an-strip-label">Best Trade</span>
+    <span class="an-strip-val green">{{ overall.best_r or "—" }}{% if overall.best_r %}R{% endif %}</span>
+  </div>
+  <div class="an-strip-sep"></div>
+  <div class="an-strip-item">
+    <span class="an-strip-label">Worst Trade</span>
+    <span class="an-strip-val red">{{ overall.worst_r or "—" }}{% if overall.worst_r %}R{% endif %}</span>
+  </div>
+</div>
+
+<!-- ── Two-column: score buckets + confirmation outcomes ─────────────────── -->
+<div class="an-row2">
+
+  <!-- Score bucket visual -->
+  <div class="card an-buckets">
+    <h2>
+      Win Rate by Score Bucket
+      <span class="h2-count">≥65 threshold</span>
+    </h2>
+    {% if buckets %}
+    <div class="an-bucket-list">
+      {% for b in buckets %}
+      {% set wr = (b.wins / b.trades * 100)|round(1) if b.trades else 0 %}
+      <div class="an-bucket-row">
+        <div class="an-bucket-header">
+          <span class="an-bucket-label">Score {{ b.bucket }}</span>
+          <span class="an-bucket-trades dim">{{ b.trades }} trade{{ 's' if b.trades != 1 }}</span>
+          <span class="an-bucket-pnl {% if (b.total_pnl or 0) > 0 %}green{% else %}red{% endif %}">
+            ${{ "%.0f"|format(b.total_pnl or 0) }}
+          </span>
+        </div>
+        <div class="an-bucket-bar-row">
+          <div class="an-bucket-track">
+            <div class="an-bucket-fill {% if wr >= 50 %}fill-green{% else %}fill-red{% endif %}"
+                 style="width:{{ wr }}%"></div>
+          </div>
+          <span class="an-bucket-wr {% if wr >= 50 %}green{% else %}red{% endif %}">{{ wr }}%</span>
+        </div>
+        <div class="an-bucket-meta">
+          <span class="dim">{{ b.wins }} win{{ 's' if b.wins != 1 }}</span>
+          <span class="an-r {% if (b.avg_r or 0) > 0 %}green{% elif (b.avg_r or 0) < 0 %}red{% endif %}">
+            Avg {{ b.avg_r or "—" }}R
+          </span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty">
+      <span class="empty-icon">◈</span>
+      <span class="empty-label">No closed trades yet</span>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Confirmation outcomes -->
+  <div class="card an-confirm">
+    <h2>Signal Confirmation Outcomes</h2>
+    {% if by_confirm %}
+    <div class="an-confirm-cards">
+      {% for r in by_confirm %}
+      {% set wr = (r.wins / r.signals * 100)|round(1) if r.signals and r.reply == 'YES' else 0 %}
+      <div class="an-confirm-card {% if r.reply == 'YES' %}conf-yes{% elif r.reply == 'NO' %}conf-no{% else %}conf-timeout{% endif %}">
+        <div class="an-conf-reply">
+          {% if r.reply == 'YES' %}✓ Traded
+          {% elif r.reply == 'NO' %}✕ Skipped
+          {% else %}⏱ Timeout{% endif %}
+        </div>
+        <div class="an-conf-signals">{{ r.signals }}</div>
+        <div class="an-conf-signals-label">signals</div>
+        {% if r.reply == 'YES' %}
+        <div class="an-conf-stats">
+          <div class="an-conf-stat">
+            <span class="an-conf-stat-label">Win Rate</span>
+            <span class="an-conf-stat-val {% if wr >= 50 %}green{% else %}red{% endif %}">{{ wr }}%</span>
+          </div>
+          <div class="an-conf-stat">
+            <span class="an-conf-stat-label">Avg R</span>
+            <span class="an-conf-stat-val {% if (r.avg_r or 0) > 0 %}green{% else %}red{% endif %}">{{ r.avg_r or "—" }}{% if r.avg_r %}R{% endif %}</span>
+          </div>
+          <div class="an-conf-stat">
+            <span class="an-conf-stat-label">P&amp;L</span>
+            <span class="an-conf-stat-val {% if (r.total_pnl or 0) > 0 %}green{% else %}red{% endif %}">${{ "%.0f"|format(r.total_pnl or 0) }}</span>
+          </div>
+        </div>
+        {% else %}
+        <div style="font-size:10px;color:var(--muted);margin-top:8px">No execution data</div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty">
+      <span class="empty-icon">◈</span>
+      <span class="empty-label">No signal history yet</span>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+
+<!-- ── Catalyst performance — ranked visual list ──────────────────────────── -->
+<div class="card">
+  <h2>R-Multiple by Catalyst Type</h2>
+  {% if by_catalyst %}
+  {% set max_r = by_catalyst|map(attribute='avg_r')|select|list|max if by_catalyst else 1 %}
+  <div class="an-catalyst-list">
+    {% for r in by_catalyst %}
+    {% set wr = (r.wins / r.trades * 100)|round(1) if r.trades else 0 %}
+    {% set bar_pct = ([((r.avg_r or 0) / (max_r or 1) * 100)|abs, 100]|min) if max_r else 0 %}
+    <div class="an-cat-row">
+      <div class="an-cat-name">{{ r.catalyst_type }}</div>
+      <div class="an-cat-bar-wrap">
+        <div class="an-cat-track">
+          <div class="an-cat-fill {% if (r.avg_r or 0) >= 0 %}fill-green{% else %}fill-red{% endif %}"
+               style="width:{{ bar_pct }}%"></div>
+        </div>
+      </div>
+      <div class="an-cat-stats">
+        <span class="an-cat-r {% if (r.avg_r or 0) > 0 %}green{% elif (r.avg_r or 0) < 0 %}red{% endif %}">
+          {{ r.avg_r or "—" }}{% if r.avg_r %}R{% endif %}
+        </span>
+        <span class="dim" style="font-size:10.5px">{{ r.trades }} trades · {{ wr }}% WR</span>
+        <span class="{% if (r.total_pnl or 0) > 0 %}green{% else %}red{% endif %}" style="font-size:10.5px;font-family:var(--font-mono)">
+          ${{ "%.0f"|format(r.total_pnl or 0) }}
+        </span>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty">
+    <span class="empty-icon">◈</span>
+    <span class="empty-label">No closed trades yet</span>
+  </div>
+  {% endif %}
+</div>
+
+<style>
+  /* ── Performance strip ────────────────────────────────────────────── */
+  .an-strip {
+    display: flex;
+    align-items: stretch;
+    padding: 0;
+    margin-bottom: 10px;
+  }
+
+  .an-strip-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 14px 10px;
+    text-align: center;
+  }
+
+  .an-strip-sep {
+    width: 1px;
+    background: var(--border);
+    align-self: stretch;
+    margin: 10px 0;
+  }
+
+  .an-strip-label {
+    font-size: 9px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+  }
+
+  .an-strip-val {
+    font-family: var(--font-mono);
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--text-strong);
+    letter-spacing: -0.3px;
+  }
+
+  /* ── Two-column row ───────────────────────────────────────────────── */
+  .an-row2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  @media (max-width: 780px) { .an-row2 { grid-template-columns: 1fr; } }
+
+  /* ── Score bucket visual ──────────────────────────────────────────── */
+  .an-bucket-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding: 6px 0;
+  }
+
+  .an-bucket-row {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .an-bucket-row:last-child { border-bottom: none; }
+
+  .an-bucket-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  .an-bucket-label {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-strong);
+  }
+
+  .an-bucket-trades { font-size: 10.5px; }
+
+  .an-bucket-pnl {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .an-bucket-bar-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 6px;
+  }
+
+  .an-bucket-track {
+    flex: 1;
+    height: 8px;
+    background: var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  .an-bucket-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.5s ease;
+  }
+
+  .fill-green { background: var(--green); }
+  .fill-red   { background: var(--red); }
+
+  .an-bucket-wr {
+    font-family: var(--font-mono);
+    font-size: 16px;
+    font-weight: 700;
+    min-width: 48px;
+    text-align: right;
+  }
+
+  .an-bucket-meta {
+    display: flex;
+    gap: 14px;
+    font-size: 10.5px;
+  }
+
+  .an-r { font-family: var(--font-mono); font-weight: 600; }
+
+  /* ── Confirmation outcome cards ───────────────────────────────────── */
+  .an-confirm-cards {
+    display: flex;
+    gap: 10px;
+    padding: 14px;
+    flex-wrap: wrap;
+  }
+
+  .an-confirm-card {
+    flex: 1;
+    min-width: 120px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+  }
+
+  .conf-yes     { border-color: rgba(38,166,154,0.3); background: var(--green-bg); }
+  .conf-no      { border-color: rgba(239,83,80,0.3);  background: var(--red-bg); }
+  .conf-timeout { border-color: var(--border-med);    background: var(--muted-bg); }
+
+  .an-conf-reply {
+    font-size: 9.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--subtext);
+    margin-bottom: 4px;
+  }
+
+  .conf-yes .an-conf-reply     { color: var(--green); }
+  .conf-no .an-conf-reply      { color: var(--red); }
+  .conf-timeout .an-conf-reply { color: var(--muted); }
+
+  .an-conf-signals {
+    font-family: var(--font-mono);
+    font-size: 30px;
+    font-weight: 700;
+    color: var(--text-strong);
+    letter-spacing: -1px;
+    line-height: 1;
+  }
+
+  .an-conf-signals-label {
+    font-size: 9.5px;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+
+  .an-conf-stats {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    border-top: 1px solid var(--border);
+    padding-top: 10px;
+    margin-top: 4px;
+  }
+
+  .an-conf-stat {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .an-conf-stat-label {
+    font-size: 9.5px;
+    color: var(--muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+
+  .an-conf-stat-val {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-strong);
+  }
+
+  /* ── Catalyst ranked list ─────────────────────────────────────────── */
+  .an-catalyst-list {
+    display: flex;
+    flex-direction: column;
+    padding: 6px 0;
+  }
+
+  .an-cat-row {
+    display: grid;
+    grid-template-columns: 130px 1fr 220px;
+    align-items: center;
+    gap: 14px;
+    padding: 11px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .an-cat-row:last-child { border-bottom: none; }
+  .an-cat-row:hover { background: var(--bg-hover); }
+
+  .an-cat-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-strong);
+  }
+
+  .an-cat-bar-wrap { display: flex; align-items: center; }
+
+  .an-cat-track {
+    flex: 1;
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  .an-cat-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.5s ease;
+  }
+
+  .an-cat-stats {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+  }
+
+  .an-cat-r {
+    font-family: var(--font-mono);
+    font-size: 14px;
+    font-weight: 700;
+    min-width: 40px;
+    text-align: right;
+  }
+  /* ── Time-of-day chart ────────────────────────────────────────────── */
+  .an-tod-list {
+    display: flex;
+    flex-direction: column;
+    padding: 6px 0;
+  }
+
+  .an-tod-row {
+    display: grid;
+    grid-template-columns: 60px 1fr 200px;
+    align-items: center;
+    gap: 14px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .an-tod-row:last-child { border-bottom: none; }
+  .an-tod-row:hover { background: var(--bg-hover); }
+
+  .an-tod-hour {
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--text-strong);
+  }
+
+  .an-tod-stats {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 16px;
+    font-size: 11px;
+  }
+
+  /* ── Exit reason breakdown ─────────────────────────────────────────── */
+  .an-exit-list {
+    display: flex;
+    flex-direction: column;
+    padding: 6px 0;
+  }
+
+  .an-exit-row {
+    display: grid;
+    grid-template-columns: 110px 1fr 220px;
+    align-items: center;
+    gap: 14px;
+    padding: 11px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .an-exit-row:last-child { border-bottom: none; }
+  .an-exit-row:hover { background: var(--bg-hover); }
+
+  /* ── Per-symbol table ─────────────────────────────────────────────── */
+  .an-sym-row { }
+</style>
+
+<!-- ── Per-symbol performance ─────────────────────────────────────────────── -->
+<div class="card">
+  <h2>
+    Performance by Symbol
+    {% if by_symbol %}
+      <span class="h2-count">{{ by_symbol|length }} symbols</span>
+    {% endif %}
+  </h2>
+  {% if by_symbol %}
+  <div class="card-table">
+  <table>
+    <thead>
+      <tr>
+        <th>Symbol</th>
+        <th class="num">Trades</th>
+        <th class="num">Win Rate</th>
+        <th class="num">Avg R</th>
+        <th class="num">Best R</th>
+        <th class="num">Total P&amp;L</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in by_symbol %}
+      {% set wr = (r.wins / r.trades * 100)|round(1) if r.trades else 0 %}
+      <tr class="an-sym-row">
+        <td><span class="sym" style="font-size:13px">{{ r.symbol }}</span></td>
+        <td class="num dim">{{ r.trades }}</td>
+        <td class="num {% if wr >= 50 %}green{% else %}red{% endif %}" style="font-family:var(--font-mono)">{{ wr }}%</td>
+        <td class="num {% if (r.avg_r or 0) > 0 %}green{% elif (r.avg_r or 0) < 0 %}red{% endif %}" style="font-family:var(--font-mono)">
+          {{ r.avg_r or "—" }}{% if r.avg_r %}R{% endif %}
+        </td>
+        <td class="num green" style="font-family:var(--font-mono)">{{ r.best_r or "—" }}{% if r.best_r %}R{% endif %}</td>
+        <td class="num {% if (r.total_pnl or 0) > 0 %}green{% elif (r.total_pnl or 0) < 0 %}red{% endif %}" style="font-family:var(--font-mono)">
+          ${{ "%.2f"|format(r.total_pnl or 0) }}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <div class="empty">
+    <span class="empty-icon">◈</span>
+    <span class="empty-label">No closed trades yet</span>
+  </div>
+  {% endif %}
+</div>
+
+<!-- ── Two-column: exit reason + time of day ──────────────────────────────── -->
+<div class="an-row2">
+
+  <!-- Exit reason breakdown -->
+  <div class="card">
+    <h2>P&amp;L by Exit Reason</h2>
+    {% if by_exit %}
+    <div class="an-exit-list">
+      {% for r in by_exit %}
+      {% set wr = (r.wins / r.trades * 100)|round(1) if r.trades else 0 %}
+      {% set max_pnl = by_exit|map(attribute='total_pnl')|select|list|max if by_exit else 1 %}
+      {% set bar_pct = ([((r.total_pnl or 0) / (max_pnl or 1) * 100)|abs, 100]|min) if max_pnl else 0 %}
+      <div class="an-exit-row">
+        <div>
+          <span class="tag tag-{{ r.exit_reason|lower }}">{{ r.exit_reason }}</span>
+        </div>
+        <div class="an-cat-bar-wrap">
+          <div class="an-cat-track">
+            <div class="an-cat-fill {% if (r.total_pnl or 0) >= 0 %}fill-green{% else %}fill-red{% endif %}"
+                 style="width:{{ bar_pct }}%"></div>
+          </div>
+        </div>
+        <div class="an-tod-stats">
+          <span class="{% if (r.avg_r or 0) > 0 %}green{% elif (r.avg_r or 0) < 0 %}red{% endif %}" style="font-family:var(--font-mono);font-size:13px;font-weight:700">
+            {{ r.avg_r or "—" }}{% if r.avg_r %}R{% endif %}
+          </span>
+          <span class="dim">{{ r.trades }} trades · {{ wr }}% WR</span>
+          <span class="{% if (r.total_pnl or 0) > 0 %}green{% else %}red{% endif %}" style="font-family:var(--font-mono)">
+            ${{ "%.0f"|format(r.total_pnl or 0) }}
+          </span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty">
+      <span class="empty-icon">◈</span>
+      <span class="empty-label">No closed trades yet</span>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Time of day -->
+  <div class="card">
+    <h2>Win Rate by Entry Hour <span class="h2-count">ET</span></h2>
+    {% if by_hour %}
+    <div class="an-tod-list">
+      {% for r in by_hour %}
+      {% set wr = (r.wins / r.trades * 100)|round(1) if r.trades else 0 %}
+      <div class="an-tod-row">
+        <div class="an-tod-hour">
+          {% set h = r.hour %}
+          {% if h == 9 %}9:30{% elif h == 10 %}10:00{% elif h == 11 %}11:00{% elif h == 12 %}12:00{% elif h == 13 %}13:00{% elif h == 14 %}14:00{% elif h == 15 %}15:00{% else %}{{ h }}:00{% endif %}
+        </div>
+        <div class="an-cat-bar-wrap">
+          <div class="an-cat-track">
+            <div class="an-cat-fill {% if wr >= 50 %}fill-green{% else %}fill-red{% endif %}"
+                 style="width:{{ wr }}%"></div>
+          </div>
+        </div>
+        <div class="an-tod-stats">
+          <span class="{% if wr >= 50 %}green{% else %}red{% endif %}" style="font-family:var(--font-mono);font-size:14px;font-weight:700">{{ wr }}%</span>
+          <span class="dim">{{ r.trades }} trades</span>
+          <span class="{% if (r.avg_r or 0) > 0 %}green{% elif (r.avg_r or 0) < 0 %}red{% endif %}" style="font-family:var(--font-mono)">
+            {{ r.avg_r or "—" }}{% if r.avg_r %}R{% endif %}
+          </span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty">
+      <span class="empty-icon">◈</span>
+      <span class="empty-label">No closed trades yet</span>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+
+{% endblock %}
