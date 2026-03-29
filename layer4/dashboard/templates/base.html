@@ -253,11 +253,9 @@
     /* ── Mobile responsive ───────────────────────────────────────────────── */
     @media (max-width: 768px) {
       nav {
-        flex-wrap: wrap;
-        height: auto;
-        min-height: var(--nav-height);
+        height: var(--nav-height);
         padding: 0 12px;
-        gap: 0;
+        position: relative;
       }
 
       .nav-hamburger { display: flex; align-self: center; }
@@ -271,16 +269,22 @@
 
       .nav-links {
         display: none;
-        width: 100%;
-        order: 10;
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
         flex-direction: column;
+        background: var(--bg-nav);
         border-top: 1px solid var(--border);
-        padding: 6px 0 10px;
+        border-bottom: 1px solid var(--border);
+        box-shadow: 0 6px 16px rgba(0,0,0,0.35);
+        z-index: 300;
+        padding: 6px 8px 10px;
       }
       .nav-links.open { display: flex; }
 
       .nav-links a.nav-link {
-        padding: 10px 14px;
+        padding: 11px 14px;
         border-bottom: none;
         border-top: none;
         border-radius: var(--radius);
